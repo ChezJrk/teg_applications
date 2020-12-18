@@ -4,7 +4,7 @@ import collections
 import numpy as np
 import matplotlib.pyplot as plt
 
-from Teg.teg.lang.integrable_program import (
+from teg.lang.integrable_program import (
     ITeg,
     Const,
     Var,
@@ -14,12 +14,12 @@ from Teg.teg.lang.integrable_program import (
     LetIn,
     TegVar,
 )
-import Teg.teg.math.smooth as smooth
-from Teg.teg.derivs import FwdDeriv
-from Teg.teg.eval import numpy_eval as evaluate_numpy
-from Teg.teg.passes.simplify import simplify
-from Teg.teg.ir import emit
-from Teg.tests.c_utils import runProgram, compileProgram
+import teg.math.smooth as smooth
+from teg.derivs import FwdDeriv
+from teg.eval import numpy_eval as evaluate_numpy
+from teg.passes.simplify import simplify
+from teg.ir import emit
+from tests.c_utils import runProgram, compileProgram
 from tap import Tap
 
 
