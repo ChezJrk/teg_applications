@@ -42,16 +42,12 @@ class PowN(SmoothFunc):
     def fwd_deriv(self, in_deriv_expr: ITeg):
         if self.n == 0:
             return 0
-        elif self.n == -1:
-            return NotImplemented('Derivative of 1/x not implemented yet')
         else:
             return self.n * PowN(self.expr, self.n - 1) * in_deriv_expr
 
     def rev_deriv(self, out_deriv_expr: ITeg):
         if self.n == 0:
             return 0
-        elif self.n == -1:
-            return NotImplemented('Derivative of 1/x not implemented yet')
         else:
             return out_deriv_expr * self.n * PowN(self.expr, self.n - 1)
 
