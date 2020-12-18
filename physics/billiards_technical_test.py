@@ -32,11 +32,6 @@ from tests.c_utils import runProgram, compileProgram
 from tap import Tap
 
 
-# logistic sigmoid
-def sigmoid(t: ITeg):
-    return 1/(1 + smooth.Exp(-1000 * t))
-
-
 def remap(t, t0, t1, x0, x1):
     s = (t - t0) * (1 / (t1 - t0))
     return x0 + s*(x1 - x0)

@@ -15,6 +15,7 @@ from teg.lang.integrable_program import (
     TegVar,
 )
 import teg.math.smooth as smooth
+import util.smooth as usmooth
 from teg.derivs import FwdDeriv
 from teg.eval import numpy_eval as evaluate_numpy
 from teg.passes.simplify import simplify
@@ -24,8 +25,8 @@ from tap import Tap
 
 
 class Args(Tap):
-    pixel_width: int = 30
-    pixel_height: int = 30
+    pixel_width: int = 10
+    pixel_height: int = 10
     num_samples: int = 30
 
 
@@ -91,9 +92,9 @@ def rasterize_triangles():
     # body = IfElse((y < .7 + theta) & (x < .7 + theta) & (.65 + theta < x + y), 1, 0)
 
     def gaussian(x_, y_, a, mx, my, sx, sy):
-        # return a * smooth.Exp(-0.5 * smooth.Sqr((y_ - my) / sy)) / (sy * 2.5066) \
-        #          * smooth.Exp(-0.5 * smooth.Sqr((x_ - mx) / sx)) / (sx * 2.5066)
-        return a * smooth.Exp(-0.5 * (smooth.Sqr((x_ - mx) / sx) + smooth.Sqr((y_ - my) / sy))) / (sx * sy * 2 * np.pi)
+        # return a * usmooth.Exp(-0.5 * smooth.Sqr((y_ - my) / sy)) / (sy * 2.5066) \
+        #          * usmooth.Exp(-0.5 * smooth.Sqr((x_ - mx) / sx)) / (sx * 2.5066)
+        return a * usmooth.Exp(-0.5 * (smooth.Sqr((x_ - mx) / sx) + smooth.Sqr((y_ - my) / sy))) / (sx * sy * 2 * np.pi)
 
 
     body = gaussian(x, y, A, mux, muy, sigmax, sigmay)
