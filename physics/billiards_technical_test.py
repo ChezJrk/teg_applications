@@ -8,7 +8,7 @@ import scipy as sp
 import scipy.optimize as spop
 import matplotlib.pyplot as plt
 
-from teg.lang.integrable_program import (
+from Teg.teg.lang.integrable_program import (
     ITeg,
     Const,
     Var,
@@ -21,14 +21,14 @@ from teg.lang.integrable_program import (
     Or,
     Bool,
 )
-from teg.lang.integrable_program import false as TegFalse
-import teg.math.smooth as smooth
-from teg.derivs import FwdDeriv, RevDeriv
-from teg.eval import numpy_eval as evaluate_numpy
-from teg.passes import simplify
-from teg.passes import substitute
-from teg.ir import emit
-from tests.c_utils import runProgram, compileProgram
+from Teg.teg.lang.integrable_program import false as TegFalse
+import Teg.teg.math.smooth as smooth
+from Teg.teg.derivs import FwdDeriv, RevDeriv
+from Teg.teg.eval import numpy_eval as evaluate_numpy
+from Teg.teg.passes import simplify
+from Teg.teg.passes import substitute
+from Teg.teg.ir import emit
+from Teg.tests.c_utils import runProgram, compileProgram
 from tap import Tap
 
 
