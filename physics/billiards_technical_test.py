@@ -21,8 +21,10 @@ from teg.lang.integrable_program import (
     Or,
     Bool,
 )
+from teg.math.smooth import (
+    Sqr
+)
 from teg.lang.integrable_program import false as TegFalse
-import teg.math.smooth as smooth
 from teg.derivs import FwdDeriv, RevDeriv
 from teg.eval import numpy_eval as evaluate_numpy
 from teg.passes import simplify
@@ -121,7 +123,7 @@ def test_func(t, a, m):
     x = linspline(t_, ts, xs)
     x_cond = condition_linspline(t_, ts, xs, lambda expr: (1 < expr))
     k = 10000
-    potential = k * IfElse(x_cond, smooth.Sqr(x - 1), 0)
+    potential = k * IfElse(x_cond, Sqr(x - 1), 0)
     # potential = k * IfElse(x_cond, 1, 0)
 
     v = FwdDeriv(x, [(t_, 1), *[(_, 0) for _ in params]]).deriv_expr
