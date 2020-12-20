@@ -1,6 +1,7 @@
 numpy
 scipy
 matplotlib
+open3d
 typed-argument-parser
 -e ./Teg
 
