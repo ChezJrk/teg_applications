@@ -1,3 +1,5 @@
+import sys
+sys.path.append("../Teg")  # TODO: hacky; actually engineer a proper setup.py
 import math
 import matplotlib.pyplot as plt
 
