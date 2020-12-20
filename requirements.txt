@@ -2,3 +2,5 @@ numpy
 scipy
 matplotlib
 typed-argument-parser
+-e ./Teg
+

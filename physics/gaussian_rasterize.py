@@ -1,5 +1,3 @@
-import sys
-sys.path.append("../Teg")  # TODO: hacky; actually engineer a proper setup.py
 from typing import List, Tuple
 import time
 import collections
