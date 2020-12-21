@@ -1,7 +1,8 @@
 numpy
 scipy
 matplotlib
-open3d
+open3d==0.11.0
+torch
 typed-argument-parser
 -e ./Teg
 
