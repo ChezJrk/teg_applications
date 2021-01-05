@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 from tqdm import trange
+from scipy.optimize import minimize
 
 from teg import (
     ITeg,
@@ -51,43 +52,83 @@ def solve_for_time_given_position(position: Const, yield_strength: Var, scale: V
     ode_solution_wrt_time = Teg(0, position, expr, x_hat)
 
     # TODO: there's a nan problem here. IfElse( > 0, Teg(0, ground_height, inner_integrand, x), 0)
-    activate_penalty = IsNotNan(Invert(Sqrt(Teg(0, ground_height, inner_integrand, x))))
+    # activate_penalty = IsNotNan(Invert(Sqrt(Teg(0, ground_height, inner_integrand, x))))
 
-    return ode_solution_wrt_time + penalty * activate_penalty, activate_penalty
+    return ode_solution_wrt_time  # + penalty * activate_penalty, activate_penalty
 
 
 def optimize(scale: Var, yield_strength: Var):
     """Optimizing both yield strength and scale for springiness. """
     # Set up the loss
     position = Const(10)
-    loss, activate_penalty = solve_for_time_given_position(position, yield_strength, scale)
+    # loss = solve_for_time_given_position(position, yield_strength, scale)
 
-    # Optimize by gradient descent
-    num_samples = 30
+    num_samples = 20
     loss_values = []
     scale_values = []
     yield_strength_values = []
-    loss = simplify(loss)
-    for i in trange(40):
-        # Save data for plotting
-        loss_values.append(evaluate(loss, num_samples=num_samples, ignore_cache=True))
+
+    def ineq_constr(args):
+        scale, yield_strength = args
+        scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
+        x = TegVar('x')
+        ground_height = 100
+        gravity = 10
+        inner_integrand = gravity - stress(x, yield_strength, scale)
+        return evaluate(Teg(0, ground_height, inner_integrand, x), num_samples=num_samples)
+
+    def jac(args):
+        scale, yield_strength = args
+        scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
+        x = TegVar('x')
+        ground_height = 100
+        gravity = 10
+        inner_integrand = gravity - stress(x, yield_strength, scale)
+        expr = simplify(Teg(0, ground_height, inner_integrand, x))
+        grads = evaluate(simplify(RevDeriv(expr, Tup(Const(1)))), num_samples=num_samples)
+        return grads
+
+    def func(args):
+        scale, yield_strength = args
+        scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
+        expr = simplify(solve_for_time_given_position(position, yield_strength, scale))
+
+        loss = evaluate(expr, num_samples=num_samples)
+        grads = evaluate(simplify(RevDeriv(expr, Tup(Const(1)))), num_samples=num_samples)
+        loss_values.append(loss)
         scale_values.append(scale.value)
         yield_strength_values.append(yield_strength.value)
+        return loss, grads
 
-        # Derivative computation
-        deriv = RevDeriv(loss, Tup(Const(1))).deriv_expr
-        deriv = substitute(deriv, activate_penalty.blew_up, Const(0) if activate_penalty.errored else Const(1))
-        dscale, dyield_strength = evaluate(simplify(deriv), num_samples=num_samples, ignore_cache=True)
+    cons = [{'type': 'ineq', 'fun': ineq_constr, 'jac': jac}]
+    minimize(func, [scale.value, yield_strength.value], constraints=cons, jac=True)
 
-        # Take gradient step
-        step_size = 0.1
-        print(dyield_strength, dscale)
-        yield_strength.value -= step_size * dyield_strength
-        scale.value -= step_size * dscale
+    # Optimize by gradient descent
+    # num_samples = 30
+    # loss_values = []
+    # scale_values = []
+    # yield_strength_values = []
+    # loss = simplify(loss)
+    # for i in trange(40):
+    #     # Save data for plotting
+    #     loss_values.append(evaluate(loss, num_samples=num_samples, ignore_cache=True))
+    #     scale_values.append(scale.value)
+    #     yield_strength_values.append(yield_strength.value)
 
-    loss_values.append(evaluate(loss, num_samples=num_samples, ignore_cache=True))
-    scale_values.append(scale.value)
-    yield_strength_values.append(yield_strength.value)
+    #     # Derivative computation
+    #     deriv = RevDeriv(loss, Tup(Const(1))).deriv_expr
+    #     deriv = substitute(deriv, activate_penalty.blew_up, Const(0) if activate_penalty.errored else Const(1))
+    #     dscale, dyield_strength = evaluate(simplify(deriv), num_samples=num_samples, ignore_cache=True)
+
+    #     # Take gradient step
+    #     step_size = 0.1
+    #     print(dyield_strength, dscale)
+    #     yield_strength.value -= step_size * dyield_strength
+    #     scale.value -= step_size * dscale
+
+    # loss_values.append(evaluate(loss, num_samples=num_samples, ignore_cache=True))
+    # scale_values.append(scale.value)
+    # yield_strength_values.append(yield_strength.value)
 
     return loss_values, scale_values, yield_strength_values
 
