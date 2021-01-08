@@ -100,14 +100,6 @@ def optimize(scale: Var, yield_strength: Var):
 
         return vhi + v
 
-    def scale_constr(args):
-        scale, yield_strength = args
-        return scale - 0.1
-
-    def yield_strength_constr(args):
-        scale, yield_strength = args
-        return yield_strength - 0.1
-
     # def jac(args):
     #     scale, yield_strength = args
     #     scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
@@ -130,20 +122,25 @@ def optimize(scale: Var, yield_strength: Var):
         print('grads', grads)
         return loss, grads
 
+    # scales = np.arange(0, 1.95, step=0.1)
+    # fig, axes = plt.subplots(nrows=1, ncols=2)
+    # plat = plt
+    # axes[0].plot(scales, [func([scale, 10])[0] for scale in scales])
+    # axes[1].plot(scales, [func([scale, 10])[1] for scale in scales])
+    # plat.show()
+
     cons = [
         {'type': 'ineq', 'fun': ineq_constr},
         {'type': 'ineq', 'fun': ineq_constr2},
-        {'type': 'ineq', 'fun': scale_constr},
-        {'type': 'ineq', 'fun': yield_strength_constr},
     ]
-    minimize(func, [scale.value, yield_strength.value], constraints=cons, tol=1e-3, jac=True)
+    minimize(func, [scale.value, yield_strength.value], constraints=cons, tol=1e-3, bounds=((0, 1.95), (0, 100)), jac=True)
 
     return loss_values, scale_values, yield_strength_values
 
 
 if __name__ == "__main__":
     # Parameters to optimize
-    scale_init = 3
+    scale_init = 1
     yield_strength_init = 10
     scale = Var('scale', scale_init)
     yield_strength = Var('yield_strength', yield_strength_init)
