@@ -43,7 +43,6 @@ def solve_for_time_given_position(position: Const, yield_strength: Var, scale: V
     x = TegVar('x')
     x_hat = TegVar('x_hat')
     ground_height = 100
-    penalty = 100
     gravity = 10
 
     # Solution to the second-order linear ODE
@@ -71,11 +70,12 @@ def solve_for_time_given_position(position: Const, yield_strength: Var, scale: V
 def optimize(scale: Var, yield_strength: Var):
     """Optimizing both yield strength and scale for springiness. """
     # Set up the loss
-    position = Const(10)
-    vhi = 40000
-    # loss = solve_for_time_given_position(position, yield_strength, scale)
+    position = Const(5)
+    vhi = 10
+    ground_height = 2
+    gravity = 10
 
-    num_samples = 20
+    num_samples = 30
     loss_values = []
     scale_values = []
     yield_strength_values = []
@@ -84,12 +84,8 @@ def optimize(scale: Var, yield_strength: Var):
         scale, yield_strength = args
         scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
         x = TegVar('x')
-        ground_height = 100
-        gravity = 10
         inner_integrand = gravity - stress(x, yield_strength, scale)
         velocity = 2 * Teg(0, ground_height, inner_integrand, x)
-
-        # return -yield_strength.value + 2
         v = evaluate(velocity, num_samples=num_samples, ignore_cache=True)
 
         return vhi - v
@@ -98,12 +94,8 @@ def optimize(scale: Var, yield_strength: Var):
         scale, yield_strength = args
         scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
         x = TegVar('x')
-        ground_height = 100
-        gravity = 10
         inner_integrand = gravity - stress(x, yield_strength, scale)
         velocity = 2 * Teg(0, ground_height, inner_integrand, x)
-
-        # return -yield_strength.value + 2
         v = evaluate(velocity, num_samples=num_samples, ignore_cache=True)
 
         return vhi + v
@@ -116,16 +108,14 @@ def optimize(scale: Var, yield_strength: Var):
         scale, yield_strength = args
         return yield_strength - 0.1
 
-    def jac(args):
-        scale, yield_strength = args
-        scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
-        x = TegVar('x')
-        ground_height = 100
-        gravity = 10
-        inner_integrand = gravity - stress(x, yield_strength, scale)
-        expr = simplify(Teg(0, ground_height, inner_integrand, x))
-        grads = evaluate(simplify(RevDeriv(expr, Tup(Const(1)))), num_samples=num_samples, ignore_cache=True)
-        return grads
+    # def jac(args):
+    #     scale, yield_strength = args
+    #     scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
+    #     x = TegVar('x')
+    #     inner_integrand = gravity - stress(x, yield_strength, scale)
+    #     expr = simplify(Teg(0, ground_height, inner_integrand, x))
+    #     grads = evaluate(simplify(RevDeriv(expr, Tup(Const(1)))), num_samples=num_samples, ignore_cache=True)
+    #     return grads
 
     def func(args):
         scale, yield_strength = args
@@ -137,8 +127,7 @@ def optimize(scale: Var, yield_strength: Var):
         loss_values.append(loss)
         scale_values.append(scale.value)
         yield_strength_values.append(yield_strength.value)
-        ret = ineq_constr(args)
-        # print(f'ineq_constr: {ret}')
+        print('grads', grads)
         return loss, grads
 
     cons = [
@@ -147,41 +136,14 @@ def optimize(scale: Var, yield_strength: Var):
         {'type': 'ineq', 'fun': scale_constr},
         {'type': 'ineq', 'fun': yield_strength_constr},
     ]
-    minimize(func, [scale.value, yield_strength.value], constraints=cons, jac=True)
-
-    # Optimize by gradient descent
-    # num_samples = 30
-    # loss_values = []
-    # scale_values = []
-    # yield_strength_values = []
-    # loss = simplify(loss)
-    # for i in trange(40):
-    #     # Save data for plotting
-    #     loss_values.append(evaluate(loss, num_samples=num_samples, ignore_cache=True))
-    #     scale_values.append(scale.value)
-    #     yield_strength_values.append(yield_strength.value)
-
-    #     # Derivative computation
-    #     deriv = RevDeriv(loss, Tup(Const(1))).deriv_expr
-    #     deriv = substitute(deriv, activate_penalty.blew_up, Const(0) if activate_penalty.errored else Const(1))
-    #     dscale, dyield_strength = evaluate(simplify(deriv), num_samples=num_samples, ignore_cache=True)
-
-    #     # Take gradient step
-    #     step_size = 0.1
-    #     print(dyield_strength, dscale)
-    #     yield_strength.value -= step_size * dyield_strength
-    #     scale.value -= step_size * dscale
-
-    # loss_values.append(evaluate(loss, num_samples=num_samples, ignore_cache=True))
-    # scale_values.append(scale.value)
-    # yield_strength_values.append(yield_strength.value)
+    minimize(func, [scale.value, yield_strength.value], constraints=cons, tol=1e-3, jac=True)
 
     return loss_values, scale_values, yield_strength_values
 
 
 if __name__ == "__main__":
     # Parameters to optimize
-    scale_init = 2
+    scale_init = 3
     yield_strength_init = 10
     scale = Var('scale', scale_init)
     yield_strength = Var('yield_strength', yield_strength_init)
@@ -194,26 +156,26 @@ if __name__ == "__main__":
                        for strain in strains]
     stresses_after = [evaluate(stress(Const(strain), yield_strength_values[-1], scale_values[-1]), ignore_cache=True)
                       for strain in strains]
-
     print(scale_values, yield_strength_values)
+
+    fig, axes = plt.subplots(nrows=2, ncols=2)
+    plat = plt
+    plt = axes[0][0]
+
     plt.plot(strains, stresses_before, label='Before')
     plt.plot(strains, stresses_after, label='After')
-    plt.ylabel('Stress')
-    plt.xlabel('Strain')
-    plt.legend()
-    plt.show()
+    plt.set(xlabel='Strain', ylabel='Stress')
+    # plt.legend()
 
+    plt = axes[0][1]
     plt.plot(loss_values)
-    plt.ylabel('Value of Loss')
-    plt.xlabel('Iteration of Gradient Descent')
-    plt.show()
+    plt.set(xlabel='Iteration of Gradient Descent', ylabel='Value of Loss')
 
+    plt = axes[1][0]
     plt.plot(scale_values)
-    plt.ylabel('Scale of Stress')
-    plt.xlabel('Iteration of Gradient Descent')
-    plt.show()
+    plt.set(xlabel='Iteration of Gradient Descent', ylabel='Scale of Stress')
 
+    plt = axes[1][1]
     plt.plot(yield_strength_values)
-    plt.ylabel('Yield Strength Threshold')
-    plt.xlabel('Iteration of Gradient Descent')
-    plt.show()
+    plt.set(xlabel='Iteration of Gradient Descent', ylabel='Yield Strength Threshold')
+    plat.show()
