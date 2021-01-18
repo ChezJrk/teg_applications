@@ -32,7 +32,7 @@ def stress(strain: ITeg, yield_strength: Var, scale: Var) -> ITeg:
     after_yield = 4 * ((2 * a - h) / (a**2)) * (strain - 3 * a / 2)**2 + h
 
     # Discontinuous stress as described by Young's Modulus
-    stress = IfElse(strain < yield_strength, before_yield, after_yield)
+    stress = IfElse(strain < yield_strength, before_yield, 0.8 * after_yield)
 
     return scale * stress
 
@@ -42,37 +42,37 @@ def solve_for_time_given_position(position: Const, yield_strength: Var, scale: V
     at rest position (0,0) and velocity. """
     x = TegVar('x')
     x_hat = TegVar('x_hat')
-    ground_height = 100
+    # ground_height = 100
     gravity = 10
 
     # Solution to the second-order linear ODE
     inner_integrand = gravity - stress(x, yield_strength, scale)
     velocity = 2 * Teg(0, x_hat, inner_integrand, x)
     x_hat.value = 1
-    vs = [ground_height, 0, 1, 2, 3,4 ,5 ,6, 7,8 ,9 , 10]
-    vres = []
-    for v in vs:
-        x_hat.value = v
-        vres.append(evaluate(velocity, ignore_cache=True))
-    print(f'vels: {vres}')
+    # vs = [ground_height, 0, 1, 2, 3,4 ,5 ,6, 7,8 ,9 , 10]
+    # vres = []
+    # for v in vs:
+    #     x_hat.value = v
+    #     vres.append(evaluate(velocity, ignore_cache=True))
+    # print(f'vels: {vres}')
     x_hat.value = None
     # expr = Invert(Sqrt(velocity))
     expr = InvertSqrt(velocity)
-    ode_solution_wrt_time = Teg(0, position, expr, x_hat)
+    ode_solution_wrt_time = Teg(1e-5, position, expr, x_hat)
     # print(f'der: {evaluate(RevDeriv(ode_solution_wrt_time, Tup(Const(1))))}')
 
     # TODO: there's a nan problem here. IfElse( > 0, Teg(0, ground_height, inner_integrand, x), 0)
     # activate_penalty = IsNotNan(Invert(Sqrt(Teg(0, ground_height, inner_integrand, x))))
 
-    return ode_solution_wrt_time  # + penalty * activate_penalty, activate_penalty
+    return ode_solution_wrt_time - 2 * (yield_strength + scale), expr  # + penalty * activate_penalty, activate_penalty
 
 
 def optimize(scale: Var, yield_strength: Var):
     """Optimizing both yield strength and scale for springiness. """
     # Set up the loss
     position = Const(5)
-    vhi = 10
-    ground_height = 2
+    # vhi = 10
+    # ground_height = 2
     gravity = 10
 
     num_samples = 30
@@ -80,25 +80,25 @@ def optimize(scale: Var, yield_strength: Var):
     scale_values = []
     yield_strength_values = []
 
-    def ineq_constr(args):
-        scale, yield_strength = args
-        scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
-        x = TegVar('x')
-        inner_integrand = gravity - stress(x, yield_strength, scale)
-        velocity = 2 * Teg(0, ground_height, inner_integrand, x)
-        v = evaluate(velocity, num_samples=num_samples, ignore_cache=True)
+    # def ineq_constr1(args):
+    #     scale, yield_strength = args
+    #     scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
+    #     x = TegVar('x')
+    #     inner_integrand = gravity - stress(x, yield_strength, scale)
+    #     velocity = 2 * Teg(0, ground_height, inner_integrand, x)
+    #     v = evaluate(velocity, num_samples=num_samples, ignore_cache=True)
 
-        return vhi - v
+    #     return vhi - v
 
-    def ineq_constr2(args):
-        scale, yield_strength = args
-        scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
-        x = TegVar('x')
-        inner_integrand = gravity - stress(x, yield_strength, scale)
-        velocity = 2 * Teg(0, ground_height, inner_integrand, x)
-        v = evaluate(velocity, num_samples=num_samples, ignore_cache=True)
+    # def ineq_constr2(args):
+    #     scale, yield_strength = args
+    #     scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
+    #     x = TegVar('x')
+    #     inner_integrand = gravity - stress(x, yield_strength, scale)
+    #     velocity = 2 * Teg(0, ground_height, inner_integrand, x)
+    #     v = evaluate(velocity, num_samples=num_samples, ignore_cache=True)
 
-        return vhi + v
+    #     return vhi + v
 
     # def jac(args):
     #     scale, yield_strength = args
@@ -112,14 +112,22 @@ def optimize(scale: Var, yield_strength: Var):
     def func(args):
         scale, yield_strength = args
         scale, yield_strength = Var('scale', scale), Var('yield_strength', yield_strength)
-        expr = simplify(solve_for_time_given_position(position, yield_strength, scale))
+        expr, vel = solve_for_time_given_position(position, yield_strength, scale)
 
         loss = evaluate(expr, num_samples=num_samples, ignore_cache=True)
+        vel_blows = vel.blow_up
+        big_loss_const = 10
+        loss = big_loss_const if vel_blows else loss
+        vel.blow_up = False
+
         grads = evaluate(simplify(RevDeriv(expr, Tup(Const(1)))), num_samples=num_samples, ignore_cache=True)
+        grads = (1, 1) if vel_blows else grads
+
         loss_values.append(loss)
         scale_values.append(scale.value)
         yield_strength_values.append(yield_strength.value)
-        print('grads', grads)
+        # print('grads', grads)
+        print("Loss", loss)
         return loss, grads
 
     # scales = np.arange(0, 1.95, step=0.1)
@@ -129,11 +137,59 @@ def optimize(scale: Var, yield_strength: Var):
     # axes[1].plot(scales, [func([scale, 10])[1] for scale in scales])
     # plat.show()
 
+    def max_acceleration_bounded(args):
+        # max(acc) < gravity
+        # gravity - max(acc) > 0
+        # gravity - max(gravity - stress) > 0
+        # -max(-stress) > 0
+        # min(stress) > 0
+        print("hi")
+        scale, yield_strength = args
+        min_stress = min([evaluate(stress(Const(x), yield_strength, scale), num_samples=num_samples, ignore_cache=True)
+                          for x in np.arange(0, position.value, 0.01)])
+        return min_stress
+
+    def displacement_is_bounded(args):
+        # total energy = elastic potential + gravitation potential + kinetic
+        # gravitation potential > 0 at every position
+        # total energy - max(elastic potential + kinetic) > 0
+
+        # Assuming initially no elastic potential and at rest (no kinetic)
+        # initial potential - max(work + kinetic)
+        # initial potential - max(displacement * force(displacement) + kinetic)
+        # initial potential - max(integral_initial^final force + kinetic)
+        # (m=1) * g * position - max(v(x) + 1/2 (m=1)v(x)^2) > 0
+        scale, yield_strength = args
+        print("there")
+        def vel(x_hat):
+            x = TegVar('x')
+            inner_integrand = gravity - stress(x, yield_strength, scale)
+            velocity = 2 * Teg(0, x_hat, inner_integrand, x)
+            return velocity
+
+        def kinetic_elastic(x_hat):
+            kinetic = vel(x_hat)**2 / 2
+            elastic = vel(x_hat)
+            return kinetic + elastic
+
+        max_kinetic_elastic = max([evaluate(kinetic_elastic(x_hat), num_samples=num_samples, ignore_cache=True)
+                                   for x_hat in np.arange(0, position.value, 0.01)])
+
+        total_energy = gravity * position.value
+        return total_energy - max_kinetic_elastic
+
     cons = [
-        {'type': 'ineq', 'fun': ineq_constr},
-        {'type': 'ineq', 'fun': ineq_constr2},
+        {'type': 'ineq', 'fun': max_acceleration_bounded},
+        {'type': 'ineq', 'fun': displacement_is_bounded},
+        # {'type': 'ineq', 'fun': lambda args: args[0]},
+        # {'type': 'ineq', 'fun': lambda args: args[1]},
+        # {'type': 'ineq', 'fun': ineq_constr1},
+        # {'type': 'ineq', 'fun': ineq_constr2},
     ]
-    minimize(func, [scale.value, yield_strength.value], constraints=cons, tol=1e-3, bounds=((0, 1.95), (0, 100)), jac=True)
+    # minimize(func, [scale.value, yield_strength.value], constraints=cons, tol=1e-3, bounds=((0, 5), (0, 100)), jac=True)
+    # minimize(func, [scale.value, yield_strength.value], tol=1e-3, bounds=((0, 5), (0, 100)), jac=True)
+
+    minimize(func, [scale.value, yield_strength.value], constraints=cons, tol=1e-3, jac=True)
 
     return loss_values, scale_values, yield_strength_values
 
@@ -141,7 +197,7 @@ def optimize(scale: Var, yield_strength: Var):
 if __name__ == "__main__":
     # Parameters to optimize
     scale_init = 1
-    yield_strength_init = 10
+    yield_strength_init = 3
     scale = Var('scale', scale_init)
     yield_strength = Var('yield_strength', yield_strength_init)
 
