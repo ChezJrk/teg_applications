@@ -239,7 +239,7 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Optional[bc.Path]:
     dels = dSda.variables
     print(f'dSda vars: {dels}')
     saction = simplify(action)
-    sdSda = simplify(dSda.deriv_expr)
+    sdSda = simplify(dSda)
 
     print(f'started constructing: sdpSdas')
     sdpSdas = [simplify(RevDeriv(saction, Tup(Const(1)), output_list=[p])) for p in params]
@@ -342,7 +342,7 @@ if __name__ == "__main__":
     w1 = bc.Wall(-5, 0, 14, 0, 0, 1)
     w2 = bc.Wall(14, 0, 16, 12, -6, 1)  # cant handle vertical walls yet; TODO reparameterize x
     w3 = bc.Wall(8, 12, 16, 12, 0, -1)  # needs to have x.lb <= x.ub right now for bounds
-    w4 = bc.Wall(5, 8, 13, 5, 0, 1)  # needs to have x.lb <= x.ub right now for bounds
+    w4 = bc.Wall(7, 8, 12, 8, 0, 1)
 
     # w5 = bc.Wall(-4, 0, 12, 16)
     # w6 = bc.Wall(0, -4, 16, 12)
