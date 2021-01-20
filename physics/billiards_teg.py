@@ -253,20 +253,48 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Optional[bc.Path]:
     sdSda = simplify(reduce_to_base(sdSda_wdelta))
     dSda = sdSda
 
+    def nonzero_hessian_param_nums(pnum):
+        pnum = pnum % len(ts)
+        if pnum == 0:
+            nonzero_tnums = [pnum, pnum + 1]
+        elif pnum == len(ts) - 1:
+            nonzero_tnums = [pnum - 1, pnum]
+        else:
+            nonzero_tnums = [pnum - 1, pnum, pnum + 1]
+        return nonzero_tnums + [_ + len(ts) for _ in nonzero_tnums]
+
+    def nonzero_hessian_params(pnum):
+        nonzero_nums = nonzero_hessian_param_nums(pnum)
+        return [params[nzero_num] for nzero_num in nonzero_nums]
+
+    def expand_sparse_hessian_row(pnum, sparse_row):
+        nonzero_nums = nonzero_hessian_param_nums(pnum)
+        full = np.zeros(len(params))
+        for nzero_num, hessval in zip(nonzero_nums, sparse_row):
+            full[nzero_num] = hessval
+        return full
+
+    # hessian_sparsity = np.zeros((len(params), len(params)))
+    # for param_num, row in enumerate(hessian_sparsity):
+    #     for nzero_num in nonzero_hessian_param_nums(param_num):
+    #         row[nzero_num] = 1
+
+
     print(f'started constructing: sdpSdas')
     # sdpSdas = [simplify(RevDeriv(saction, Tup(Const(1)), output_list=[p])) for p in params]
     _, sdpSdas = reverse_deriv(saction, Tup(Const(1)), output_list=params)
     sdpSdas = [simplify(sdpSda) for sdpSda in sdpSdas]
 
     print(f'started constructing: sddpSdas')
-    sddpSdas = [simplify(reverse_deriv(sdpSda, Tup(Const(1)), output_list=params)[1]) for sdpSda in sdpSdas]
+
+    sddpSdas_sparse = [simplify(reverse_deriv(sdpSda, Tup(Const(1)), output_list=nonzero_hessian_params(param_num))[1]) for param_num, sdpSda in enumerate(sdpSdas)]
 
     # Reduce delta exprs.
     print(f'reducing deltas in sdpSdas')
     sdpSdas = [simplify(reduce_to_base(sdpSda)) for sdpSda in sdpSdas]
 
     print(f'reducing deltas in sddpSdas')
-    sddpSdas = [Tup(*(simplify(reduce_to_base(sddpSda)) for sddpSda in _sddpSdas)) for _sddpSdas in sddpSdas]
+    sddpSdas_sparse = [Tup(*(simplify(reduce_to_base(sddpSda)) for sddpSda in _sddpSdas)) for _sddpSdas in sddpSdas_sparse]
 
     args = Args()
 
@@ -289,8 +317,10 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Optional[bc.Path]:
         return k
 
     def dd_action_func(vs):
-        ks = np.array([evaluate(sddpSda, {p_: v for p_, v in zip(params, vs)}, num_samples=args.num_samples, backend=args.backend)
-                       for sddpSda in sddpSdas])
+        ks = np.array([
+            expand_sparse_hessian_row(param_num_, evaluate(sddpSda_sparse, {p_: v for p_, v in zip(params, vs)},
+                                                           num_samples=args.num_samples, backend=args.backend))
+            for param_num_, sddpSda_sparse in enumerate(sddpSdas_sparse)])
 
         # step = 0.0001
         # vsteps = np.array([action_func(np.concatenate([vs[:i], [v + step], vs[i+1:]])) for i, v in enumerate(vs)])
@@ -376,6 +406,7 @@ if __name__ == "__main__":
         w2,
         w3,
         w4,
+
         # w5,
         # w6,
         # w5,
