@@ -27,12 +27,14 @@ from teg.lang.teg import (
 from teg.lang.base import false as TegFalse
 import teg.math.smooth as smooth
 from teg.derivs import FwdDeriv, RevDeriv
+from teg.derivs.reverse_deriv import reverse_deriv
+from teg.derivs.fwd_deriv import fwd_deriv
 from teg.eval import evaluate
 from teg.passes import simplify
 from teg.passes import substitute
 from tap import Tap
 from teg.passes.simplify import simplify
-
+from teg.passes.reduce import reduce_to_base
 
 def remap(t, t0, t1, x0, x1):
     s = (t - t0) * (1 / (t1 - t0))
@@ -80,13 +82,14 @@ def test_func(t, a, m):
     potential = k * IfElse(x_cond, smooth.Sqr(x - 1), 0)
     # potential = k * IfElse(x_cond, 1, 0)
 
-    v = FwdDeriv(x, [(t_, 1), *[(_, 0) for _ in params]]).deriv_expr
+    v = simplify(FwdDeriv(x, [(t_, 1), *[(_, 0) for _ in params]]).deriv_expr)
     kinetic = 1/2*m*v*v
     lagrangian = kinetic - potential
     action = Teg(0, 2, lagrangian, t_)
-    dSda = RevDeriv(action, Tup(Const(1)))
-    dels = dSda.variables
-    print(dels)
+    #dSda = RevDeriv(action, Tup(Const(1)))
+    dSda_vars, dSda = reverse_deriv(action, Tup(Const(1)))
+    dSda = simplify(dSda)
+    print(dSda_vars)
 
     args = Args()
 
@@ -139,12 +142,16 @@ def convert_to_teg(prob: bc.BilliardsProblem):
 
     potential = 0
 
-    v = FwdDeriv(x, [(t, 1), *[(_, 0) for _ in params]]).deriv_expr
+    # v = FwdDeriv(x, [(t, 1), *[(_, 0) for _ in params]]).deriv_expr
+    v = simplify(reduce_to_base(fwd_deriv(x, [(t, 1), *[(_, 0) for _ in params]])))
     kinetic = 1/2*m*v*v
     lagrangian = kinetic - potential
     action = Teg(0, 1, lagrangian, t)
-    dSda = RevDeriv(action, Tup(Const(1)))
-    dels = dSda.variables
+    #dSda = RevDeriv(action, Tup(Const(1)))
+    #dels = dSda.variables
+    dSda_vars, dSda = reverse_deriv(action, Tup(Const(1)))
+    dSda = simplify(dSda)
+    print(dSda_vars)
 
 
 def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Optional[bc.Path]:
@@ -225,8 +232,10 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Optional[bc.Path]:
 
     potential = 0
 
-    vx = FwdDeriv(x, [(t, 1)]).deriv_expr
-    vy = FwdDeriv(y, [(t, 1)]).deriv_expr
+    # vx = FwdDeriv(x, [(t, 1)]).deriv_expr
+    # vy = FwdDeriv(y, [(t, 1)]).deriv_expr
+    vx = simplify(reduce_to_base(fwd_deriv(x, [(t, 1)])))
+    vy = simplify(reduce_to_base(fwd_deriv(y, [(t, 1)])))
     # v = FwdDeriv(x, [(t, 1), *[(_, 0) for _ in params]]).deriv_expr
     kinetic = 1/2*m*(vx*vx + vy*vy)
     lagrangian = kinetic - potential
@@ -235,16 +244,29 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Optional[bc.Path]:
     penalty = 0
     action = Teg(mint, maxt, lagrangian, t) + scale_factor * penalty
     print(f'started constructing: dSda')
-    dSda = RevDeriv(action, Tup(Const(1)), output_list=params)
-    dels = dSda.variables
-    print(f'dSda vars: {dels}')
+    # dSda = RevDeriv(action, Tup(Const(1)), output_list=params)
+    # dels = dSda.variables
+    dSda_vars, dSda_wdelta = reverse_deriv(action, Tup(Const(1)), output_list=params)
+    sdSda_wdelta = simplify(dSda_wdelta)
+    print(f'dSda vars: {dSda_vars}')
     saction = simplify(action)
-    sdSda = simplify(dSda)
+    sdSda = simplify(reduce_to_base(sdSda_wdelta))
+    dSda = sdSda
 
     print(f'started constructing: sdpSdas')
-    sdpSdas = [simplify(RevDeriv(saction, Tup(Const(1)), output_list=[p])) for p in params]
+    # sdpSdas = [simplify(RevDeriv(saction, Tup(Const(1)), output_list=[p])) for p in params]
+    _, sdpSdas = reverse_deriv(saction, Tup(Const(1)), output_list=params)
+    sdpSdas = [simplify(sdpSda) for sdpSda in sdpSdas]
+
     print(f'started constructing: sddpSdas')
-    sddpSdas = [simplify(RevDeriv(sdpSda, Tup(Const(1)), output_list=params)) for sdpSda in sdpSdas]
+    sddpSdas = [simplify(reverse_deriv(sdpSda, Tup(Const(1)), output_list=params)[1]) for sdpSda in sdpSdas]
+
+    # Reduce delta exprs.
+    print(f'reducing deltas in sdpSdas')
+    sdpSdas = [simplify(reduce_to_base(sdpSda)) for sdpSda in sdpSdas]
+
+    print(f'reducing deltas in sddpSdas')
+    sddpSdas = [Tup(*(simplify(reduce_to_base(sddpSda)) for sddpSda in _sddpSdas)) for _sddpSdas in sddpSdas]
 
     args = Args()
 
