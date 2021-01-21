@@ -31,7 +31,8 @@ def stress(strain: ITeg, threshold: Var, scale: Var) -> ITeg:
     g = 10
     x = strain
 
-    e = IfElse(x < 0, 0, IfElse(x < threshold, scale * x, g))
+    e = scale * x
+    # e = IfElse(x < 0, 0, IfElse(x < threshold, scale * x, g))
 
     return e
 
@@ -56,12 +57,13 @@ def optimize(nadir: Const, apex: Const, threshold: Var, scale: Var):
     """Optimizing both yield strength and scale for springiness. """
     g = 10
     # mass = 1
-    num_samples = 30
+    num_samples = 100
     loss_values = []
     scale_values = []
     threshold_values = []
 
     expr, invert_sqrt_vel = solve_for_time_given_position(nadir, apex, threshold, scale)
+    expr = simplify(expr)
 
     def loss_and_grads(args):
         scale_val, threshold_val = args
@@ -123,42 +125,55 @@ def optimize(nadir: Const, apex: Const, threshold: Var, scale: Var):
         total_energy = g * apex.value
         return total_energy - max_kinetic_elastic
 
-    # scales = np.arange(0, 5, step=0.1)
-    # threshold_val = 5
-    # fig, axes = plt.subplots(nrows=1, ncols=2)
-    # plat = plt
-    # axes[0].plot(scales, [loss_and_grads([scale, threshold_val])[0] for scale in scales])
-    # axes[1].plot(scales, [loss_and_grads([scale, threshold_val])[1] for scale in scales])
-    # plat.show()
-    from mpl_toolkits.mplot3d import axes3d
-    from matplotlib import cm
+    ### loss function plotting
+    def compute_samples (sval, tval):
+        print(f's: {sval} | t: {tval}')
+        return loss_and_grads((sval, tval))
 
-    fig = plt.figure()
-    ax = fig.add_subplot(131, projection='3d')
-    ax2 = fig.add_subplot(132, projection='3d')
-    ax3 = fig.add_subplot(133, projection='3d')
-    # X, Y, Z = axes3d.get_test_data(0.05)
+    scales = np.arange(0, 10, step=1)
+    threshold_val = 9
+    fig, axes = plt.subplots(nrows=1, ncols=2)
+    plat = plt
+    vals = np.array([compute_samples(scale, threshold_val) for scale in scales])
+    axes[0].plot(scales, [v[0] for v in vals])
+    axes[1].plot(scales, [v[1] for v in vals])
+    plat.show()
+
+    # from matplotlib import cm
     #
-    buff = 10
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # # ax2 = fig.add_subplot(132, projection='3d')
+    # # ax3 = fig.add_subplot(133, projection='3d')
+    # # X, Y, Z = axes3d.get_test_data(0.05)
+    #
+    # def compute_samples (sval, tval):
+    #     print(f's: {sval} | t: {tval}')
+    #     return loss_and_grads((sval, tval))[0]
+    #
+    # scale_samples = np.arange(0, 10, .5)
+    # threshold_samples = np.arange(0, 10, .5)
+    # X = np.array([np.array([scale_val for _ in threshold_samples]) for scale_val in scale_samples])
+    # Y = np.array([np.array([threshold_val for threshold_val in threshold_samples]) for _ in scale_samples])
+    # Z = np.array([np.array([compute_samples(scale_val, threshold_val) for threshold_val in threshold_samples]) for scale_val in scale_samples])
+    # levels = [_ for _ in np.arange(0, 10, 1)]
+    #
+    # ax.plot_surface(X, Y, Z, rstride=1, cstride=1, alpha=0.5)
+    # ax.contour(X, Y, Z, levels=levels, cmap=cm.get_cmap('magma'), linestyles="solid")
+    # ax.set_xlabel('scale')
+    # ax.set_ylabel('threshold')
+    # ax.set_zlabel('loss')
+    #
+    # plt.show()
 
-    ax.plot_surface(np.array([x0s for _ in ts[buff:-buff-1]]), np.array([np.array([t_ for _ in x0s]) for t_ in ts[buff:-buff-1]]), valsdt[buff:-buff, :], rstride=2, cstride=1, alpha=0.5)
-    ax.contour(np.array([x0s for _ in ts[buff:-buff-1]]), np.array([np.array([t_ for _ in x0s]) for t_ in ts[buff:-buff-1]]), valsdt[buff:-buff, :], levels=[_ for _ in np.arange(-10, 6, 1)], cmap=cm.get_cmap('magma'), linestyles="solid")
-    ax.set_xlabel('x0')
-    ax.set_ylabel('t0')
-    ax.set_zlabel('dt0')
-    ax2.plot_surface(np.array([x0s[:-1] for _ in ts[buff:-buff]]), np.array([np.array([t_ for _ in x0s[:-1]]) for t_ in ts[buff:-buff]]), valsdx[buff:-buff, :], rstride=2, cstride=1, alpha=0.5)
-    ax2.contour(np.array([x0s[:-1] for _ in ts[buff:-buff]]), np.array([np.array([t_ for _ in x0s[:-1]]) for t_ in ts[buff:-buff]]), valsdx[buff:-buff, :], levels=[_ for _ in np.arange(-1, 2, 0.25)], cmap=cm.get_cmap('magma'), linestyles="solid")
-    ax2.set_xlabel('x0')
-    ax2.set_ylabel('t0')
-    ax2.set_zlabel('dx0')
+    ### plotting end
 
-
-    cons = [
-        {'type': 'ineq', 'fun': max_acceleration_bounded},
-        {'type': 'ineq', 'fun': displacement_is_bounded},
-    ]
-
-    minimize(loss_and_grads, [scale.value, threshold.value], constraints=cons, tol=1e-1, jac=True)
+    # cons = [
+    #     {'type': 'ineq', 'fun': max_acceleration_bounded},
+    #     {'type': 'ineq', 'fun': displacement_is_bounded},
+    # ]
+    #
+    # minimize(loss_and_grads, [scale.value, threshold.value], constraints=cons, tol=1e-1, jac=True)
 
     return loss_values, scale_values, threshold_values
 
@@ -173,36 +188,36 @@ if __name__ == "__main__":
     apex = Const(5)
 
     loss_values, scale_values, threshold_values = optimize(nadir, apex, threshold, scale)
-
-    import numpy as np
-    strains = np.arange(0, apex.value, step=0.1)
-    stresses_before = [evaluate(stress(Const(strain), threshold_init, scale_init), ignore_cache=True)
-                       for strain in strains]
-    stresses_after = [evaluate(stress(Const(strain), threshold_values[-1], scale_values[-1]), ignore_cache=True)
-                      for strain in strains]
-    print(scale_values, threshold_values)
-
-    fig, axes = plt.subplots(nrows=2, ncols=2)
-    plat = plt
-    plt = axes[0][0]
-
-    plt.plot(strains, stresses_before, label='Before')
-    plt.plot(strains, stresses_after, label='After')
-    plt.set(xlabel='Strain', ylabel='Stress')
-    # plt.legend()
-
-    plt = axes[0][1]
-    plt.plot(loss_values)
-    plt.set(xlabel='Iteration of Optimization', ylabel='Value of Loss')
-
-    plt = axes[1][0]
-    plt.plot(scale_values)
-    plt.set(xlabel='Iteration of Optimization', ylabel='Scale of Stress')
-
-    plt = axes[1][1]
-    plt.plot(threshold_values)
-    plt.set(xlabel='Iteration of Optimization', ylabel='Yield Strength Threshold')
-    plat.show()
+    #
+    # import numpy as np
+    # strains = np.arange(0, apex.value, step=0.1)
+    # stresses_before = [evaluate(stress(Const(strain), threshold_init, scale_init), ignore_cache=True)
+    #                    for strain in strains]
+    # stresses_after = [evaluate(stress(Const(strain), threshold_values[-1], scale_values[-1]), ignore_cache=True)
+    #                   for strain in strains]
+    # print(scale_values, threshold_values)
+    #
+    # fig, axes = plt.subplots(nrows=2, ncols=2)
+    # plat = plt
+    # plt = axes[0][0]
+    #
+    # plt.plot(strains, stresses_before, label='Before')
+    # plt.plot(strains, stresses_after, label='After')
+    # plt.set(xlabel='Strain', ylabel='Stress')
+    # # plt.legend()
+    #
+    # plt = axes[0][1]
+    # plt.plot(loss_values)
+    # plt.set(xlabel='Iteration of Optimization', ylabel='Value of Loss')
+    #
+    # plt = axes[1][0]
+    # plt.plot(scale_values)
+    # plt.set(xlabel='Iteration of Optimization', ylabel='Scale of Stress')
+    #
+    # plt = axes[1][1]
+    # plt.plot(threshold_values)
+    # plt.set(xlabel='Iteration of Optimization', ylabel='Yield Strength Threshold')
+    # plat.show()
 
 b = 3
 s = 5
