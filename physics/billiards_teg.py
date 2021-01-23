@@ -93,93 +93,6 @@ def condition_linspline(t: ITeg, ts: List[ITeg], xs: List[ITeg], bool_func):
     return f
 
 
-def test_func(t, a, m):
-    t_ = TegVar('t_')
-
-    # a_ = a
-    # a = t
-    params = [a]
-
-    ts = [0, 1, 2]
-    xs = [0, a, 0]
-    x = linspline(t_, ts, xs)
-    x_cond = condition_linspline(t_, ts, xs, lambda expr: (1 < expr))
-    k = 10000
-    potential = k * IfElse(x_cond, smooth.Sqr(x - 1), 0)
-    # potential = k * IfElse(x_cond, 1, 0)
-
-    v = simplify(FwdDeriv(x, [(t_, 1), *[(_, 0) for _ in params]]).deriv_expr)
-    kinetic = 1/2*m*v*v
-    lagrangian = kinetic - potential
-    action = Teg(0, 2, lagrangian, t_)
-    #dSda = RevDeriv(action, Tup(Const(1)))
-    dSda_vars, dSda = reverse_deriv(action, Tup(Const(1)))
-    dSda = simplify(dSda)
-    print(dSda_vars)
-
-    args = Args()
-
-    def bind_param(expr, vs):
-        for param, v in zip(params, vs):
-            expr.bind_variable(param, v)
-
-    def action_func(vs):
-        bind_param(action, vs)
-        return evaluate(action, num_samples=args.num_samples, ignore_cache=True)
-
-    def d_action_func(vs):
-        bind_param(dSda, vs)
-        k = evaluate(dSda, num_samples=args.num_samples, ignore_cache=True)
-        return k[0]
-
-    init_guess = [2.0]
-    # init_guess = [1.03571428]
-    print(d_action_func(init_guess))
-    print(action_func(init_guess))
-    # res = spop.root_scalar(d_action_func, bracket=[0.1, 2.0], method='bisect')
-    res = spop.root(d_action_func, x0=init_guess, method='hybr', tol=1e-8)
-    # res = spop.minimize(action_func, init_guess, method='Nelder-Mead', tol=1e-12)
-    # res = spop.minimize(action_func, init_guess, method='CG', tol=1e-6, jac=loss_grad)
-
-    print(res.x)
-    print(d_action_func(res.x))
-    x.bind_variable(a, res.x)
-    return substitute.substitute(x, t_, t)
-    # return action
-    # return dSda
-
-
-def convert_to_teg(prob: bc.BilliardsProblem):
-    start = prob.tee
-    walls = prob.walls
-    end = prob.pocket
-    ts = [Var(f't{idx}', (idx + 1) / (len(walls) + 1)) for idx, w in enumerate(walls)]
-    xs = [Var(f'x{idx}', (w.x0 + w.x1) / 2) for idx, w in enumerate(walls)]
-    ys = [Var(f'y{idx}', (w.y0 + w.y1) / 2) for idx, w in enumerate(walls)]
-    params = ts + xs + ys
-    collision_params = [Tup(x, y) for x, y in zip(xs, ys)]
-    ts = [0, *ts, 1]
-    ps = [Tup(start.x, start.y), *collision_params, Tup(end.x, end.y)]
-    t = TegVar('t')
-    m = Var('m', 1)
-
-    x = linspline(t, ts, ps)
-    # x_cond = condition_linspline(t, ts, ps, lambda expr: (1 < expr))
-
-    potential = 0
-
-    # v = FwdDeriv(x, [(t, 1), *[(_, 0) for _ in params]]).deriv_expr
-    v = simplify(reduce_to_base(fwd_deriv(x, [(t, 1), *[(_, 0) for _ in params]])))
-    kinetic = 1/2*m*v*v
-    lagrangian = kinetic - potential
-    action = Teg(0, 1, lagrangian, t)
-    #dSda = RevDeriv(action, Tup(Const(1)))
-    #dels = dSda.variables
-    dSda_vars, dSda = reverse_deriv(action, Tup(Const(1)))
-    dSda = simplify(dSda)
-    print(dSda_vars)
-
-
 def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Optional[bc.Path]:
     start = prob.tee
     walls = prob.walls
@@ -189,62 +102,48 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Optional[bc.Path]:
     mint = start.t
     maxt = end.t
 
-    bounds = []
     ts = []
-    xs = []
+    us = []
     ps = []
 
     for idx, w in enumerate(walls):
         x0, y0 = w.x0, w.y0
         x1, y1 = w.x1, w.y1
-        wnorm = np.array([w.normalx, w.normaly])
 
         t = Var(f't{idx}', mint + (maxt - mint) * (idx + 1) / (len(walls) + 1))
-        # x = Var(f'x{idx}', x1-0.01)
-        x = Var(f'x{idx}', (x0 + x1) / 2)
-        # x = Var(f'x{idx}', (x0 + x1) / 2)
-
-        # m = (y1 - y0) / (x1 - x0)
-        # b = y0 - x0 * (y1 - y0) / (x1 - x0)
-        # y = m * x + b
-        y = remap(x, x0, x1, y0, y1)
+        u = Var(f'u{idx}', 0.5)
+        x = remap(u, 0, 1, x0, x1)
+        y = remap(u, 0, 1, y0, y1)
 
         p = np.array([x, y])
 
-        bounds.append([x0, x1])
         ts.append(t)
-        xs.append(x)
+        us.append(u)
         ps.append(p)
+    params = ts + us
 
-    params = ts + xs
+    bound_eps = 0.01
+    boundts = []
+    boundus = []
 
-    from scipy.optimize import LinearConstraint
+    for _ in range(len(ts)):
+        boundts.append((mint + bound_eps, maxt - bound_eps))
+    for _ in range(len(us)):
+        boundus.append((bound_eps, 1 - bound_eps))
+    boundps = boundts + boundus
+
     lin_constraints = []
     constraints = []
-    boundts = []
-    boundxs = []
-
-    eps = 0.0
-
-    if len(ts) > 0:
-        for _ in range(len(ts)):
-            boundts.append((mint + eps, maxt - eps))
 
     if len(ts) > 1:
         # eps <= [-1, 1, 0, 0, 0, 0] [t0,   <= np.inf
         # eps <= [0, -1, 1, 0, 0, 0]  t1,   <= np.inf
         #                             t2,
         #                             x0, x1, x2]  (assumes params pack ts first)
-        lincon_lbs = np.full(len(ts) - 1, eps)
+        lincon_lbs = np.full(len(ts) - 1, bound_eps)
         lincon_A = np.eye(len(ts) - 1, len(params), 1) - np.eye(len(ts) - 1, len(params))
         lincon_ubs = np.full_like(lincon_lbs, np.inf)
-        lin_constraints.append(LinearConstraint(lincon_A, lincon_lbs, lincon_ubs))
-
-    for x, xbs in zip(xs, bounds):
-        x0, x1 = xbs
-        boundxs.append((x0, x1))
-
-    boundps = boundts + boundxs
+        lin_constraints.append(spop.LinearConstraint(lincon_A, lincon_lbs, lincon_ubs))
 
     # params = [v for tx in zip(ts, xs) for v in tx]
     t = TegVar('t')
@@ -374,8 +273,6 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Optional[bc.Path]:
     print(f'init guess: {init_guess}')
     print(f'init   action: {action_func(init_guess)}')
     print(f'init  daction: {d_action_func(init_guess)}')
-    # print(f'init ddaction: {dd_action_func(init_guess)}')
-    # print(d_action_func(init_guess))
     cons = []
     for cteg in constraints:
         def cteg_func(param_vals):
@@ -388,26 +285,21 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Optional[bc.Path]:
         })
     print(f'cons   :  {list(map(str, constraints))}')
     print(f'lincons: {lin_constraints}')
-    eps = 0.1
-    # res = spop.minimize(action_func, init_guess, jac=d_action_func, method='BFGS')
-    # res = spop.minimize(action_func, init_guess, jac=d_action_func, constraints=lin_constraints, bounds=boundps)
     res = spop.minimize(action_func, init_guess, jac=d_action_func, hess=dd_action_func, method='trust-constr', constraints=lin_constraints, bounds=boundps, options={'verbose': 1})
-    # res = spop.minimize(action_func, init_guess, jac=d_action_func, method='L-BFGS-B')
-    # res = spop.minimize(action_func, init_guess, jac=d_action_func, method='SLSQP')
-    # res = spop.minimize(action_func, init_guess, jac=d_action_func, method='TNC', bounds=[b for bs in [((mint+eps, maxt-eps), (walls[i].x0, walls[i].x1)) for i in range(len(xs))] for b in bs])
-    # res = spop.minimize(action_func, init_guess, jac=d_action_func, constraints=cons)  # TODO bounds?? threshold??
 
     print(f'res: {res.x}')
     print(f'final   action: {action_func(res.x)}')
     print(f'final  daction: {d_action_func(res.x)}')
-    # print(f'final ddaction: {dd_action_func(res.x)}')
     print(f'  took: {time.time() - timing_prev}')
 
     tvals = []
     pvals = []
-    for tval, xval, xvar, p in zip(res.x[:len(ts)], res.x[len(ts):], xs, ps):
+    for tval, uval, w in zip(res.x[:len(ts)], res.x[len(ts):], walls):
+        x0, y0 = w.x0, w.y0
+        x1, y1 = w.x1, w.y1
+        xval = remap(uval, 0, 1, x0, x1)
+        yval = remap(uval, 0, 1, y0, y1)
         tvals.append(tval)
-        yval = evaluate(p[1], {xvar: xval}, num_samples=args.num_samples, backend=args.backend)
         pvals.append(np.array([xval, yval]))
     path = bc.LinearPath([mint, *tvals, maxt], [p0, *pvals, p1])
     bind_param(x, res.x)
@@ -424,50 +316,44 @@ class Args(Tap):
     pixel_height: int = 30
     num_samples: int = 100
     t_samples: int = 400
-    # backend: str = 'numpy'
     backend: str = 'C'  # TODO backend are different???
 
 
 if __name__ == "__main__":
-    start = bc.Tee(0, 0, 0)
-    w0 = bc.Wall(-4, 0, 8, 12, 1, -1)
-    w1 = bc.Wall(-5, 0, 14, 0, 0, 1)
-    w2 = bc.Wall(14, 0, 16, 12, -6, 1)  # cant handle vertical walls yet; TODO reparameterize x
-    w3 = bc.Wall(8, 12, 16, 12, 0, -1)  # needs to have x.lb <= x.ub right now for bounds
-    w4 = bc.Wall(7, 8, 12, 8, 0, 1)
+    w0 = bc.Wall(-15, -10, 5, -10)
+    w1 = bc.Wall(5, -10, 15, 10)
+    w2 = bc.Wall(15, 10, -5, 10)
+    w3 = bc.Wall(-5, 10, -15, -10)
 
-    w5 = bc.Wall(-4, 0, 12, 16)
-    w6 = bc.Wall(0, -4, 16, 12)
+    wl = bc.Wall(-15, -15, 0, 10)
+    wr = bc.Wall(-15, -15, 10, 0)
+    # wl = bc.Wall(-40, 40, 10, 10)
+    # wr = bc.Wall(-40, 40, -10, -10)
 
-    end = bc.Pocket(10, 10, 10)
+    start = bc.Tee(-5, -5, 0)
+    end = bc.Pocket(5, 5, 10)
+
     walls = [
-        # w0,
-        # w1,
-        # w2,
-        # w3,
-        # w4,
+        w1,
+        w2,
+        w0,
+        w3,
+        w1,
+        w2,
+        w0,
+        w3,
+        w1,
+        w2,
+        w0,
+        w3,
+        w1,
+        w2,
 
-        w5,
-        w6,
-        w5,
-        w6,
-        w5,
-        w6,
-        w5,
-        w6,
-        w5,
-        w6,
-
-        w5,
-        w6,
-        w5,
-        w6,
-        w5,
-        w6,
-        w5,
-        w6,
-        w5,
-        w6,
+        # wl,
+        # wr,
+        # wl,
+        # wr,
+        # wl,
     ]
     prob = bc.BilliardsProblem(start, walls, end)
     a = Var('a', 0)
@@ -480,10 +366,9 @@ if __name__ == "__main__":
 
     def sample_expr(expr, ts_, v=a):
         for t_ in ts_:
-            print(t_)
+            # print(t_)
             expr.bind_variable(v, t_)
             f = evaluate(expr, num_samples=args.num_samples, backend=args.backend)
-            # print(t_, f)
             yield f
 
     ts = np.array([start.t + (end.t - start.t) * i/args.t_samples for i in range(args.t_samples + 1)])
@@ -498,19 +383,16 @@ if __name__ == "__main__":
     bill_plot.plot(xs, ys)
     for w in walls:
         bill_plot.plot(np.array([w.x0, w.x1]), np.array([w.y0, w.y1]))
+    bill_plot.scatter([start.x], [start.y], c='green',  marker='.')
+    bill_plot.scatter([end.x], [end.y], c='red', marker='.')
     bill_plot.set_aspect('equal', adjustable='box')
 
     axes[1][0].plot(ts, xs)
     axes[1][0].plot(ts, ys)
     axes[1][0].plot(ts, [math.sqrt(vx * vx + vy * vy) for vx, vy in zip(vxs, vys)])
 
-    #
-    # axes[1][1].plot(ts, vxs)
-    # axes[1][1].plot(ts, vys)
+    # x0s = np.array([10 * i/args.t_samples for i in range(args.t_samples + 1)])
 
-    x0s = np.array([10 * i/args.t_samples for i in range(args.t_samples + 1)])
-
-    from mpl_toolkits.mplot3d import axes3d
     from matplotlib import cm
 
     # fig = plt.figure()
@@ -574,8 +456,6 @@ if __name__ == "__main__":
     # axes[0][1].plot(ts, actions)
     # axes[1][1].plot(ts, dSdas)
 
-    # plt.xlim(0, 12)
-    # plt.gca().set_aspect('equal', adjustable='box')
     plt.show()
 
 
