@@ -38,10 +38,10 @@ def stress(strain: ITeg, threshold1: Var, threshold2: Var, scale1: Var, scale2: 
     scaled_thresh1 = (scale1 + scale2) * threshold1
     scaled_thresh2 = (scale1 + scale2) * threshold2
 
-    neither_lock = IfElse((delta_x1_raw < scaled_thresh1) & (delta_x2_raw < scaled_thresh2), scale1 * delta_x1 + scale2 * delta_x2, 0)
+    neither_lock = IfElse((delta_x1_raw <= scaled_thresh1) & (delta_x2_raw <= scaled_thresh2), scale1 * delta_x1 + scale2 * delta_x2, 0)
     spring1_lock = IfElse((delta_x1_raw > scaled_thresh1) & (delta_x2_raw < scaled_thresh2), scale2 * delta_x, 0)
     spring2_lock = IfElse((delta_x1_raw < scaled_thresh1) & (delta_x2_raw > scaled_thresh2), scale1 * delta_x, 0)
-    both_lock = IfElse((delta_x1_raw > scaled_thresh1) & (delta_x2_raw > scaled_thresh2), g, 0)
+    both_lock = IfElse((delta_x1_raw >= scaled_thresh1) & (delta_x2_raw >= scaled_thresh2), g, 0)
 
     e = IfElse(delta_x < 0, 0, neither_lock + spring1_lock + spring2_lock + both_lock)
 
@@ -192,7 +192,7 @@ def optimize(nadir: Const, apex: Const, threshold1, threshold2, scale1: Var, sca
         {'type': 'ineq', 'fun': displacement_is_bounded},
     ]
 
-    options = {'maxiter': 5}
+    options = {'maxiter': 20}
     print('Starting minimization')
     minimize(loss_and_grads, [scale1.value, scale2.value, threshold1.value, threshold2.value], constraints=cons, tol=1e-1, jac=True, options=options)
     print('Ending minimization')
@@ -203,8 +203,8 @@ if __name__ == "__main__":
     # Parameters to optimize
     scale1_init = 2
     scale2_init = 1
-    threshold1_init = 1
-    threshold2_init = 1
+    threshold1_init = 2
+    threshold2_init = 2
     scale1 = Var('scale1', scale1_init)
     scale2 = Var('scale2', scale2_init)
     threshold1 = Var('threshold1', threshold1_init)
