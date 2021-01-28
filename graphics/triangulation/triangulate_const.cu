@@ -7,14 +7,16 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <iostream>
 #include <sstream>
+#include <fstream>
 
 #include "common.cuh"
 // Output generated from Teg
 #include "tegpixel.h" 
+#include "tegloss.h" 
 #include "renderpixel.h"
 
-// End Temporary placeholder.
-#define ALPHA 0.001
+#define ALPHA_COLOR 0.7
+#define ALPHA_VERTEX 3000
 
 __global__
 void pt_loss_derivative(int* tids,
@@ -81,6 +83,57 @@ void pt_loss_derivative(int* tids,
     atomicAdd(&d_pcolor->d_c.r, outvals[13]);
     atomicAdd(&d_pcolor->d_c.g, outvals[14]);
     atomicAdd(&d_pcolor->d_c.b, outvals[15]);
+
+}
+
+__global__
+void pt_loss(int* tids,
+            int* pids,
+            int num_jobs,
+            Image* image,
+            TriMesh* mesh,
+            ConstFragment* colors,
+            float* loss_image)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(idx >= num_jobs)
+        return;
+
+    auto tri_id = tids[idx];
+    auto pixel_id = pids[idx];
+
+    Vertex* a = mesh->tv0(tri_id);
+    Vertex* b = mesh->tv1(tri_id);
+    Vertex* c = mesh->tv2(tri_id);
+
+    Color pixel = image->colors[pixel_id];
+    Color tricolor = colors[tri_id].c;
+
+    int h = image->cols;
+    // Run generated teg function.
+    auto outval = pixel_loss(
+        a->x,a->y,
+        b->x,b->y,
+        c->x,c->y,
+
+        floorf(pixel_id / h),
+        floorf(pixel_id / h) + 1,
+        (float)(pixel_id % h),
+        (float)(pixel_id % h + 1),
+
+        pixel.r,
+        pixel.g,
+        pixel.b,
+
+        tricolor.r,
+        tricolor.g,
+        tricolor.b
+    );
+
+    // Accumulate derivatives.
+    // TODO: There needs to be an easier way to accumulate derivatives..
+    atomicAdd(&loss_image[pixel_id], outval);
 
 }
 
@@ -170,18 +223,28 @@ void build_d_const_colors(TriMesh* trimesh,
 
 int main(int argc, char** argv)
 {
-    if (argc != 4) {
-        std::cout << "Usage: ./triangulate <image_file> <tri-grid nx> <tri-grid ny>" << std::endl;
+    if (argc != 5) {
+        std::cout << "Usage: ./triangulate <image_file> <tri-grid nx> <tri-grid ny> <use_deltas: y/n>" << std::endl;
         exit(1);
     }
 
     std::stringstream ss_nx(argv[2]);
     std::stringstream ss_ny(argv[3]);
 
+    std::stringstream ss_delta(argv[4]);
+
     int nx;
     int ny;
     ss_nx >> nx;
     ss_ny >> ny;
+
+    char c_use_deltas;
+    ss_delta >> c_use_deltas;
+    if (c_use_deltas != 'y' && c_use_deltas != 'n') {
+        std::cout << "Please specify y/n for 4th argument" << std::endl;
+        return -1;
+    }
+    bool use_deltas = c_use_deltas == 'y';
 
     // Load an image.
     cv::Mat image;
@@ -232,6 +295,10 @@ int main(int argc, char** argv)
     char* triangle_bimage = (char*) malloc(image_pcs * 1);
     cudaMallocManaged(&triangle_image,    image_sz);
 
+    float* loss_image;
+    char* loss_bimage = (char*) malloc(image.rows * image.cols * 1);
+    cudaMallocManaged(&loss_image, sizeof(float) * image.rows * image.cols);
+
     int max_jobs = image.rows * image.cols * 10 * sizeof(int);
     int* tids;
     int* pids;
@@ -260,6 +327,7 @@ int main(int argc, char** argv)
 
     int num_jobs = 0;
 
+    std::stringstream loss_string;
     for (int iter = 0; iter < 150; iter ++){
         printf("Iteration %d", iter);
 
@@ -269,6 +337,7 @@ int main(int argc, char** argv)
         set_zero<DConstFragment><<<((mesh->num_triangles) / 256 + 1), 256>>>(d_colors, mesh->num_triangles);
         set_zero<DVertex><<<((mesh->num_vertices) / 256 + 1), 256>>>(d_mesh->d_vertices, mesh->num_triangles);
         set_zero<float><<<(image_pcs / 256) + 1, 256>>>(triangle_image, image_pcs);
+        set_zero<float><<<(image.rows * image.cols / 256) + 1, 256>>>(loss_image, image.rows * image.cols);
 
         num_jobs = generate_jobs(image.rows, image.cols, mesh, tids, pids);
         printf("jobs: %d\n", num_jobs);
@@ -288,17 +357,30 @@ int main(int argc, char** argv)
             d_colors);
 
         cudaDeviceSynchronize();
-        compute_triangle_regularization(mesh, d_mesh);
+
+        pt_loss<<<(num_jobs / 256) + 1, 256>>>(
+            tids,
+            pids,
+            num_jobs,
+            tri_image,
+            mesh,
+            colors,
+            loss_image);
+
+        compute_triangle_regularization(mesh, d_mesh, 2);
         // Update values.
         /*update_values<<< (nx * ny) / 256 + 1, 256 >>>(
             nx, ny, vertices, tcolors, d_vertices, d_tcolors, ALPHA
         );*/
+
+        float avg_total_pixel_area = image.rows * image.cols / (nx * ny);
+        float avg_triangle_surface_area = image.rows * image.cols / (sqrt(nx * ny));
         update_vertices<<< (mesh->num_vertices) / 256 + 1, 256 >>>(
-            mesh, d_mesh, ALPHA * 100
+            mesh, d_mesh, (use_deltas ? ALPHA_VERTEX / avg_triangle_surface_area : 0)
         );
 
         update_const_colors<<< (mesh->num_triangles) / 256 + 1, 256 >>>(
-            mesh->num_triangles, colors, d_colors, ALPHA * 4
+            mesh->num_triangles, colors, d_colors, ALPHA_COLOR / avg_total_pixel_area
         );
 
         cudaDeviceSynchronize();
@@ -320,11 +402,28 @@ int main(int argc, char** argv)
             triangle_bimage[idx] = (char) ((_val < 0) ? 0 : (_val > 255 ? 255 : _val));
         }
 
+        float total_loss = 0.f;
+        for(int idx = 0; idx < image.rows * image.cols; idx ++){
+            int _val = (int)(loss_image[idx] * 256);
+            total_loss += loss_image[idx];
+            loss_bimage[idx] = (char) ((_val < 0) ? 0 : (_val > 255 ? 255 : _val));
+        }
+
+        std::cout << "Loss: " << total_loss << std::endl;
+        loss_string << total_loss << std::endl;
+
         std::stringstream ss;
         ss << "iter-" << iter << ".png";
         cv::imwrite(ss.str(), cv::Mat(image.rows, image.cols, CV_8UC3, triangle_bimage));
+        std::stringstream ss_loss;
+        ss_loss << "loss-" << iter << ".png";
+        cv::imwrite(ss_loss.str(), cv::Mat(image.rows, image.cols, CV_8UC1, loss_bimage));
     }
-    
+
+    std::ofstream outfile("out.loss");
+    outfile << loss_string.str();
+    outfile.close();
+
     cudaFree(triangle_image);
     cudaFree(tids);
     cudaFree(pids);

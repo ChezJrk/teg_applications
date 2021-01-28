@@ -1,5 +1,9 @@
 #include "triangle.cuh"
 
+#define BETA_1 0.9
+#define BETA_2 0.99
+#define EPS 10e-8
+
 int generate_jobs(int image_width, int image_height, 
                   TriMesh* trimesh,
                   int* tids, int* pids ) {
@@ -36,7 +40,8 @@ float sgn(float x){
 }
 
 int compute_triangle_regularization(TriMesh* mesh,
-                                    DTriMesh* d_mesh) {
+                                    DTriMesh* d_mesh,
+                                    float alpha=1) {
 
     for (int tid = 0; tid < mesh->num_triangles; tid++) {
         Vertex* a = mesh->tv0(tid);
@@ -44,7 +49,7 @@ int compute_triangle_regularization(TriMesh* mesh,
         Vertex* c = mesh->tv2(tid);
 
         // Cross-product for area
-        float area = ((a->x - b->x)*(a->y - c->y) - (a->x - c->x)*(a->y - b->y)) / 1.f;
+        float area = ((a->x - b->x)*(a->y - c->y) - (a->x - c->x)*(a->y - b->y)) / alpha;
 
         DVertex* d_a = d_mesh->tv0(tid);
         DVertex* d_b = d_mesh->tv1(tid);
@@ -63,6 +68,7 @@ int compute_triangle_regularization(TriMesh* mesh,
 
 }
 
+/*
 int build_initial_triangles(TriMesh* trimesh,
                              int nx, int ny,
                              int image_width, int image_height) {
@@ -105,8 +111,52 @@ int build_initial_triangles(TriMesh* trimesh,
 
     std::cout << "Built triangles " << num_triangles << ", " << num_vertices << std::endl;
     return num_triangles;
-}
+}*/
 
+int build_initial_triangles(TriMesh* trimesh,
+                            int nx, int ny,
+                            int image_width, int image_height) {
+
+    float tri_width  = (float)(image_width)  / nx;
+    float tri_height = (float)(image_height) / ny;
+
+    
+    cudaMallocManaged(&trimesh->vertices, sizeof(Vertex) * (nx + 1) * (ny + 1));
+    cudaMallocManaged(&trimesh->weights, sizeof(float) * (nx + 1) * (ny + 1));
+    int num_vertices = 0;
+    for(int i = 0; i < nx + 1; i++) {
+        for(int j = 0; j < ny + 1; j++) {
+            Vertex* a = trimesh->vertices + (i * (ny + 1) + j);
+            a->x = tri_width  * i;
+            a->y = tri_height * j;
+            trimesh->weights[(i * (ny + 1) + j)] = !((i == 0) || (j == 0) || (i == nx) || (j == ny));
+            num_vertices ++;
+        }
+    }
+
+    cudaMallocManaged(&trimesh->triangles, sizeof(Triangle) * (nx) * (ny) * 2);
+
+    int num_triangles = 0;
+    for(int i = 0; i < nx; i++) {
+        for(int j = 0; j < ny; j++) {
+            trimesh->triangles[2 * (i * ny + j)] = Triangle{((i + 0) * (ny + 1) + j + 0),
+                                        ((i + 0) * (ny + 1) + j + 1),
+                                        ((i + 1) * (ny + 1) + j + 1)};
+
+            trimesh->triangles[2 * (i * ny + j) + 1] = Triangle{((i + 0) * (ny + 1) + j + 0),
+                                            ((i + 1) * (ny + 1) + j + 1),
+                                            ((i + 1) * (ny + 1) + j + 0)};
+
+            num_triangles += 2;
+        }
+    }
+
+    trimesh->num_triangles = num_triangles;
+    trimesh->num_vertices = num_vertices;
+
+    std::cout << "Built triangles " << num_triangles << ", " << num_vertices << std::endl;
+    return num_triangles;
+}
 
 template<typename T>
 __global__ 
@@ -131,10 +181,14 @@ void build_d_mesh(TriMesh* trimesh,
                   DTriMesh** d_trimesh) {
 
     cudaMallocManaged(d_trimesh, sizeof(DTriMesh));
-    cudaMallocManaged(&((*d_trimesh)->d_vertices), sizeof(Vertex) * trimesh->num_vertices);
+    cudaMallocManaged(&((*d_trimesh)->d_vertices), sizeof(DVertex) * trimesh->num_vertices);
+    cudaMallocManaged(&((*d_trimesh)->d_mean), sizeof(DVertex) * trimesh->num_vertices);
+    cudaMallocManaged(&((*d_trimesh)->d_variance), sizeof(DVertex) * trimesh->num_vertices);
     (*d_trimesh)->trimesh = trimesh;
     (*d_trimesh)->num_vertices = trimesh->num_vertices;
     set_zero<DVertex><<<((trimesh->num_vertices) / 256) + 1, 256>>>((*d_trimesh)->d_vertices, trimesh->num_vertices);
+    set_zero<DVertex><<<((trimesh->num_vertices) / 256) + 1, 256>>>((*d_trimesh)->d_mean, trimesh->num_vertices);
+    set_zero<DVertex><<<((trimesh->num_vertices) / 256) + 1, 256>>>((*d_trimesh)->d_variance, trimesh->num_vertices);
     cudaDeviceSynchronize();
 }
 
@@ -150,8 +204,25 @@ void update_vertices(TriMesh* mesh,
 
     Vertex* a = mesh->vertices + idx;
     DVertex* d_a = d_mesh->d_vertices + idx;
-    a->x = a->x - alpha * d_a->x * mesh->weights[idx];
-    a->y = a->y - alpha * d_a->y * mesh->weights[idx];
+    DVertex* d_mean = d_mesh->d_mean + idx;
+    DVertex* d_variance = d_mesh->d_variance + idx;
+
+    d_mean->x = (d_mean->x) * BETA_1 + (1 - BETA_1) * d_a->x;
+    d_variance->x = (d_variance->x) * BETA_2 + (1 - BETA_2) * d_a->x * d_a->x;
+
+    d_mean->y = (d_mean->y) * BETA_1 + (1 - BETA_1) * d_a->y;
+    d_variance->y = (d_variance->y) * BETA_2 + (1 - BETA_2) * d_a->y * d_a->y;
+
+    float mean_x_hat = d_mean->x / (1 - BETA_1);
+    float variance_x_hat = d_variance->x / (1 - BETA_2);
+
+    float mean_y_hat = d_mean->y / (1 - BETA_1);
+    float variance_y_hat = d_variance->y / (1 - BETA_2);
+
+    // a->x = a->x - alpha * d_a->x * mesh->weights[idx];
+    // a->y = a->y - alpha * d_a->y * mesh->weights[idx];
+    a->x = a->x - (alpha * mean_x_hat) / (sqrt(variance_x_hat) + EPS);
+    a->y = a->y - (alpha * mean_y_hat) / (sqrt(variance_y_hat) + EPS);
 
 }
 

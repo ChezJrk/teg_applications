@@ -32,13 +32,18 @@ add_executable(test test.cu)
 add_custom_target(teg
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/renderpixel.h"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tegpixel.h"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tegloss.h"
 
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv.h"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_loss.h"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv_nodelta.h"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_integral.h"
 
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_bilinear_deriv.h"
-    
+
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_deriv.h"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_loss.h"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_deriv_nodelta.h"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_integral.h")
 
 add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/renderpixel.h"
@@ -53,6 +58,12 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/tegpixel.h"
     COMMENT "Building Teg kernels: loss_function.py"
 )
 
+add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/tegloss.h"
+    COMMAND python3 -m teg --compile "${CMAKE_CURRENT_SOURCE_DIR}/loss.py" -f single -t CUDA_C -o "${CMAKE_CURRENT_SOURCE_DIR}/tegloss.h" -m pixel_loss
+    MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/loss.py"
+    COMMENT "Building Teg kernels: loss.py"
+)
+
 add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv.h"
     COMMAND python3 -m teg --compile "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv.py" -f single -t CUDA_C -o "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv.h" -m teg_linear_deriv
     MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv.py"
@@ -60,11 +71,25 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv.h"
     COMMENT "Building Teg kernels: teg_linear_deriv.py"
 )
 
+add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv_nodelta.h"
+    COMMAND python3 -m teg --compile "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv_nodelta.py" -f single -t CUDA_C -o "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv_nodelta.h" -m teg_linear_deriv_nodelta
+    MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_deriv_nodelta.py"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Building Teg kernels: teg_linear_deriv_nodelta.py"
+)
+
 add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_integral.h"
     COMMAND python3 -m teg --compile "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_integral.py" -f single -t CUDA_C -o "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_integral.h" -m teg_linear_integral
     MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_integral.py"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Building Teg kernels: teg_linear_integral.py"
+)
+
+add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_loss.h"
+    COMMAND python3 -m teg --compile "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_loss.py" -f single -t CUDA_C -o "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_loss.h" -m teg_linear_loss
+    MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_loss.py"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Building Teg kernels: teg_linear_loss.py"
 )
 
 add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_deriv.h"
@@ -81,6 +106,19 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_integral.h"
     COMMENT "Building Teg kernels: teg_quadratic_integral.py"
 )
 
+add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_deriv_nodelta.h"
+    COMMAND python3 -m teg --compile "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_deriv_nodelta.py" -f single -t CUDA_C -o "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_deriv_nodelta.h" -m teg_quadratic_deriv_nodelta
+    MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_deriv_nodelta.py"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Building Teg kernels: teg_quadratic_deriv_nodelta.py"
+)
+
+add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_loss.h"
+    COMMAND python3 -m teg --compile "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_loss.py" -f single -t CUDA_C -o "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_loss.h" -m teg_quadratic_loss
+    MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/teg_quadratic_loss.py"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Building Teg kernels: teg_quadratic_loss.py"
+)
 
 add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_bilinear_deriv.h"
     COMMAND python3 -m teg --compile "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_bilinear_deriv.py" -f single -t CUDA_C -o "${CMAKE_CURRENT_SOURCE_DIR}/teg_linear_bilinear_deriv.h" -m teg_linear_bilinear_deriv
