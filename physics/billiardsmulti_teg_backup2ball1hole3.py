@@ -240,19 +240,19 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
         # (thit3.value, uhit3x.value + (ru + rv) * np.cos(vhit3theta.value), uhit3z.value + (ru + rv) * np.sin(vhit3theta.value)),
         (maxt*tvscale, holeu[0], holeu[1]),
     ]
-    k = 8
+    k = 10
     expand_uknots = [
         0,
-        k,
-        k,
+        k+2,
+        k+2,
         k+4,
         # 0,
         k+4,
     ]
     expand_vknots = [
         k,
-        k,
-        k,
+        k+2,
+        k+2,
         k+4,
         # 0,
         k+4,
@@ -587,6 +587,10 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     print(f'final   action: {action_func(res.x)}')
     print(f'final  daction: {d_action_func(res.x)}')
     print(f'  took: {time.time() - timing_prev}')
+    print(uhit1x)
+    print(res.x[params.index(uhit1x)])
+    print(uhit1z)
+    print(res.x[params.index(uhit1z)])
 
     bind_param(ux, res.x)
     bind_param(uz, res.x)
@@ -599,11 +603,11 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
 
 class Args(Tap):
     num_samples: int = 400
-    t_samples: int = 100
+    t_samples: int = 300
     backend: str = 'C'
 
     gamma: float = 0.2
-    bound_eps: float = 0.3
+    bound_eps: float = 0.05
     bound_scale: float = 100000000
     mint: float = 0
     maxt: float = 15
@@ -614,15 +618,15 @@ def main():
 
     tvscale = 1.2
     timewall = bc.Wall(tvscale, 0, 0, 0)
-    teeu = np.array([9.3, -14.4])
+    teeu = np.array([10, -25])
     # teeu = np.array([5, 0])
-    teev = np.array([12, -20])
+    teev = np.array([12, -30])
     holeu = np.array([-2, 24])
     holev = np.array([30, 20])
     teewall = bc.Wall(teeu[0], teeu[1], teev[0], teev[1])
     holewall = bc.Wall(holeu[0], holeu[1], holev[0], holev[1])
-    uwall1 = bc.Wall(-4, -8, holeu[0], holeu[1])
-    vwall1 = bc.Wall(22, -17, 32, 2.3)
+    uwall1 = bc.Wall(-8, -16, holeu[0], holeu[1])
+    vwall1 = bc.Wall(18, -27, 32, 2.3)
     vwall2 = bc.Wall(32, 2.3, 30, 20)
     # vwall2 = bc.Wall(vwall1.x1, vwall1.y1, holev[0], holev[1])
 
