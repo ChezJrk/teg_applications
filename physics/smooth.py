@@ -12,6 +12,7 @@ class InvertSqrt(SmoothFunc):
     """y = x^(-0.5) with suppressed errors """
     def __init__(self, expr: ITeg, name: str = "InvertSqrt"):
         super(InvertSqrt, self).__init__(expr=expr, name=name)
+        self.blow_up = False
 
     def fwd_deriv(self, in_deriv_expr: ITeg):
         return Const(-1/2) * InvertSqrt(self.expr)**3 * in_deriv_expr
@@ -22,6 +23,7 @@ class InvertSqrt(SmoothFunc):
     def operation(self, in_value):
         if (np.array(in_value) > 0).all():
             return 1 / np.sqrt(in_value)
+        self.blow_up = True
         return np.zeros_like(in_value)
 
     def output_size(input_size):
