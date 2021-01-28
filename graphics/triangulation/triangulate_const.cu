@@ -224,7 +224,7 @@ void build_d_const_colors(TriMesh* trimesh,
 int main(int argc, char** argv)
 {
     if (argc != 5) {
-        std::cout << "Usage: ./triangulate <image_file> <tri-grid nx> <tri-grid ny> <use_deltas: y/n>" << std::endl;
+        std::cout << "Usage: ./triangulate_const <image_file> <tri-grid nx> <tri-grid ny> <use_deltas: y/n>" << std::endl;
         exit(1);
     }
 
