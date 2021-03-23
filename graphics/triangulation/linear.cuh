@@ -2,6 +2,8 @@
 
 #include "teg_linear_integral.h"
 #include "teg_linear_deriv.h"
+#include "teg_linear_loss.h"
+#include "teg_linear_deriv_nodelta.h"
 #include "teg_linear_bilinear_deriv.h"
 
 __global__
@@ -211,6 +213,68 @@ void linear_bilinear_deriv_kernel(int* tids,
 
 
 __global__
+void linear_loss_kernel(int* tids,
+                        int* pids,
+                        int num_jobs,
+                        Image* image,
+                        TriMesh* mesh,
+                        LinearFragment* colors,
+                        float* loss_image)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(idx >= num_jobs)
+        return;
+
+    auto tri_id = tids[idx];
+    auto pixel_id = pids[idx];
+
+    Vertex* a = mesh->tv0(tri_id);
+    Vertex* b = mesh->tv1(tri_id);
+    Vertex* c = mesh->tv2(tri_id);
+
+    Color pixel = image->colors[pixel_id];
+    Color tricolor0 = colors[tri_id].c0;
+    Color tricolor1 = colors[tri_id].c1;
+    Color tricolor2 = colors[tri_id].c2;
+
+    int h = image->cols;
+    // Run generated teg function.
+    auto outval = teg_linear_loss(
+        a->x,a->y,
+        b->x,b->y,
+        c->x,c->y,
+
+        floorf(pixel_id / h),
+        floorf(pixel_id / h) + 1,
+        (float)(pixel_id % h),
+        (float)(pixel_id % h + 1),
+
+        pixel.r,
+        pixel.g,
+        pixel.b,
+
+        tricolor0.r,
+        tricolor0.g,
+        tricolor0.b,
+
+        tricolor1.r,
+        tricolor1.g,
+        tricolor1.b,
+
+        tricolor2.r,
+        tricolor2.g,
+        tricolor2.b
+    );
+
+    // Accumulate derivatives.
+    // TODO: There needs to be an easier way to accumulate derivatives..
+    // Accumulate image.
+    atomicAdd(&loss_image[pixel_id], outval);
+
+}
+
+__global__
 void linear_deriv_kernel(int* tids,
                              int* pids,
                              int num_jobs,
@@ -240,6 +304,94 @@ void linear_deriv_kernel(int* tids,
     int h = image->cols;
     // Run generated teg function.
     auto outvals = teg_linear_deriv(
+        a->x,a->y,
+        b->x,b->y,
+        c->x,c->y,
+
+        floorf(pixel_id / h),
+        floorf(pixel_id / h) + 1,
+        (float)(pixel_id % h),
+        (float)(pixel_id % h + 1),
+
+        pixel.r,
+        pixel.g,
+        pixel.b,
+
+        tricolor0.r,
+        tricolor0.g,
+        tricolor0.b,
+
+        tricolor1.r,
+        tricolor1.g,
+        tricolor1.b,
+
+        tricolor2.r,
+        tricolor2.g,
+        tricolor2.b
+    );
+
+    DVertex* d_a = d_mesh->tv0(tri_id);
+    DVertex* d_b = d_mesh->tv1(tri_id);
+    DVertex* d_c = d_mesh->tv2(tri_id);
+
+    DLinearFragment *d_pcolor = d_colors + tri_id;
+
+    // Accumulate derivatives.
+    // TODO: There needs to be an easier way to accumulate derivatives..
+    atomicAdd(&d_a->x, outvals[0]);
+    atomicAdd(&d_b->x, outvals[1]);
+    atomicAdd(&d_c->x, outvals[2]);
+
+    atomicAdd(&d_a->y, outvals[3]);
+    atomicAdd(&d_b->y, outvals[4]);
+    atomicAdd(&d_c->y, outvals[5]);
+
+    atomicAdd(&d_pcolor->d_c0.r, outvals[6]);
+    atomicAdd(&d_pcolor->d_c0.g, outvals[7]);
+    atomicAdd(&d_pcolor->d_c0.b, outvals[8]);
+
+    atomicAdd(&d_pcolor->d_c1.r, outvals[9]);
+    atomicAdd(&d_pcolor->d_c1.g, outvals[10]);
+    atomicAdd(&d_pcolor->d_c1.b, outvals[11]);
+
+    atomicAdd(&d_pcolor->d_c2.r, outvals[12]);
+    atomicAdd(&d_pcolor->d_c2.g, outvals[13]);
+    atomicAdd(&d_pcolor->d_c2.b, outvals[14]);
+
+}
+
+
+
+__global__
+void linear_deriv_kernel_nodelta(int* tids,
+                             int* pids,
+                             int num_jobs,
+                             Image* image,
+                             TriMesh* mesh,
+                             DTriMesh* d_mesh,
+                             LinearFragment* colors,
+                             DLinearFragment* d_colors)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(idx >= num_jobs)
+        return;
+
+    auto tri_id = tids[idx];
+    auto pixel_id = pids[idx];
+
+    Vertex* a = mesh->tv0(tri_id);
+    Vertex* b = mesh->tv1(tri_id);
+    Vertex* c = mesh->tv2(tri_id);
+
+    Color pixel = image->colors[pixel_id];
+    Color tricolor0 = colors[tri_id].c0;
+    Color tricolor1 = colors[tri_id].c1;
+    Color tricolor2 = colors[tri_id].c2;
+
+    int h = image->cols;
+    // Run generated teg function.
+    auto outvals = teg_linear_deriv_nodelta(
         a->x,a->y,
         b->x,b->y,
         c->x,c->y,

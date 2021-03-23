@@ -197,6 +197,8 @@ struct DTriMesh {
     TriMesh* trimesh;
     int num_vertices;
     DVertex* d_vertices;
+    DVertex* d_mean;
+    DVertex* d_variance;
 
     __device__ __host__ DVertex* tv0(int i) {
         return d_vertices + trimesh->triangles[i].a;
@@ -208,6 +210,14 @@ struct DTriMesh {
 
     __device__ __host__ DVertex* tv2(int i) {
         return d_vertices + trimesh->triangles[i].c;
+    }
+
+    __device__ __host__ DVertex* grad_mean(int i) {
+        return d_mean + trimesh->triangles[i].c;
+    }
+
+    __device__ __host__ DVertex* grad_variance(int i) {
+        return d_variance + trimesh->triangles[i].c;
     }
 
 };
