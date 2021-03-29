@@ -178,14 +178,14 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     vhit1theta = Var('vhit1theta', 0)
     vhit2theta = Var('vhit2theta', 0)
     vhit3theta = Var('vhit3theta', 0)
-    tu0 = teeu[0]
-    tu1 = teeu[1]
-    tu0val = teeu[0]
-    tu1val = teeu[1]
-    # tu0 = uhit1x
-    # tu1 = uhit1z
-    # tu0val = uhit1x.value
-    # tu1val = uhit1z.value
+    # tu0 = teeu[0]
+    # tu1 = teeu[1]
+    # tu0val = teeu[0]
+    # tu1val = teeu[1]
+    tu0 = uhit1x
+    tu1 = uhit1z
+    tu0val = uhit1x.value
+    tu1val = uhit1z.value
     key_upoints = [
         (mint, teeu[0], teeu[1]),
         (thit1, tu0, tu1),
@@ -240,22 +240,22 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
         # (thit3.value, uhit3x.value + (ru + rv) * np.cos(vhit3theta.value), uhit3z.value + (ru + rv) * np.sin(vhit3theta.value)),
         (maxt*tvscale, holeu[0], holeu[1]),
     ]
-    k = 8
+    k = 10
     expand_uknots = [
         0,
-        k,
-        k,
-        k,
+        k+2,
+        k+2,
+        k+4,
         # 0,
         k,
     ]
     expand_vknots = [
         k,
-        k,
-        k,
-        k,
+        k+2,
+        k+2,
+        k+4,
         # 0,
-        k,
+        k+4,
     ]
     cross_ubounds = [False for _ in key_upoints]
     cross_vbounds = [
@@ -588,6 +588,10 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     print(f'final   action: {action_func(res.x)}')
     print(f'final  daction: {d_action_func(res.x)}')
     print(f'  took: {time.time() - timing_prev}')
+    print(uhit1x)
+    print(res.x[params.index(uhit1x)])
+    print(uhit1z)
+    print(res.x[params.index(uhit1z)])
 
     bind_param(ux, res.x)
     bind_param(uz, res.x)
@@ -600,31 +604,31 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
 
 class Args(Tap):
     num_samples: int = 400
-    t_samples: int = 100
+    t_samples: int = 300
     backend: str = 'C'
 
     gamma: float = 0.2
-    bound_eps: float = 0.3
+    bound_eps: float = 0.05
     bound_scale: float = 100000000
     mint: float = 0
-    maxt: float = 15
+    maxt: float = 10
 
 
 def main():
     args = Args()
 
-    tvscale = 1.2
+    tvscale = 2
     timewall = bc.Wall(tvscale, 0, 0, 0)
-    teeu = np.array([9.3, -14.4])
+    teeu = np.array([10, -25])
     # teeu = np.array([5, 0])
-    teev = np.array([12, -20])
+    teev = np.array([12, -30])
     holeu = np.array([-2, 24])
     holev = np.array([30, 20])
     teewall = bc.Wall(teeu[0], teeu[1], teev[0], teev[1])
     holewall = bc.Wall(holeu[0], holeu[1], holev[0], holev[1])
-    uwall1 = bc.Wall(4, -20, holeu[0], holeu[1])
-    vwall1 = bc.Wall(22, -17, 26, 2.3)
-    vwall2 = bc.Wall(26, 2.3, holev[0], holev[1])
+    uwall1 = bc.Wall(-8, -16, holeu[0], holeu[1])
+    vwall1 = bc.Wall(18, -27, 32, 2.3)
+    vwall2 = bc.Wall(32, 2.3, 30, 20)
     # vwall2 = bc.Wall(vwall1.x1, vwall1.y1, holev[0], holev[1])
 
     scalefactor = 1
@@ -658,8 +662,8 @@ def main():
 
     ts = np.array([start.t + (end.t - start.t) * i/args.t_samples for i in range(args.t_samples + 1)])
     tsv = np.array([start.t + (end.t*tvscale - start.t) * i/args.t_samples for i in range(args.t_samples + 1)])
-    ts2 = np.array([start.t + i/24 for i in range(24*(end.t-start.t) + 1)])
-    tsv2 = np.array([start.t + i/24 for i in range(int(24*(end.t*tvscale-start.t) + 1))])
+    ts2 = np.array([start.t + i/120 for i in range(120*(end.t-start.t) + 1)])
+    tsv2 = np.array([start.t + i/120 for i in range(int(120*(end.t*tvscale-start.t) + 1))])
 
     uxs = list(sample_expr(ux, ts))
     uzs = list(sample_expr(uz, ts))

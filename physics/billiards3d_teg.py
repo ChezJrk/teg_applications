@@ -178,14 +178,14 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     vhit1theta = Var('vhit1theta', 0)
     vhit2theta = Var('vhit2theta', 0)
     vhit3theta = Var('vhit3theta', 0)
-    tu0 = teeu[0]
-    tu1 = teeu[1]
-    tu0val = teeu[0]
-    tu1val = teeu[1]
-    # tu0 = uhit1x
-    # tu1 = uhit1z
-    # tu0val = uhit1x.value
-    # tu1val = uhit1z.value
+    # tu0 = teeu[0]
+    # tu1 = teeu[1]
+    # tu0val = teeu[0]
+    # tu1val = teeu[1]
+    tu0 = uhit1x
+    tu1 = uhit1z
+    tu0val = uhit1x.value
+    tu1val = uhit1z.value
     key_upoints = [
         (mint, teeu[0], teeu[1]),
         (thit1, tu0, tu1),
@@ -245,17 +245,17 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
         0,
         k,
         k,
-        k,
+        k+4,
         # 0,
-        k,
+        k+4,
     ]
     expand_vknots = [
         k,
         k,
         k,
-        k,
+        k+4,
         # 0,
-        k,
+        k+4,
     ]
     cross_ubounds = [False for _ in key_upoints]
     cross_vbounds = [
@@ -449,12 +449,11 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     print(f'started constructing: dSda')
     # dSda = RevDeriv(action, Tup(Const(1)), output_list=params)
     # dels = dSda.variables
-
-    dSda_vars, dSda_wdelta = reverse_deriv(action, Tup(Const(1)), output_list=params, args={'ignore_deltas': True, 'ignore_bounds': True})
+    dSda_vars, dSda_wdelta = reverse_deriv(action, Tup(Const(1)), output_list=params)
     sdSda_wdelta = simplify(dSda_wdelta)
     saction = simplify(action)
     # sforce_integral = simplify(force_integral)
-    sdSda = simplify(sdSda_wdelta)   # - sforce_integral
+    sdSda = simplify(reduce_to_base(sdSda_wdelta))   # - sforce_integral
     dSda = sdSda
     print(f'  took: {time.time() - timing_prev}')
     print(f'dSda vars: {dSda_vars}')
@@ -491,12 +490,12 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     timing_prev = time.time()
     print(f'started constructing: sdpSdas')
     # sdpSdas = [simplify(RevDeriv(saction, Tup(Const(1)), output_list=[p])) for p in params]
-    _, sdpSdas = reverse_deriv(saction, Tup(Const(1)), output_list=params, args={'ignore_deltas': True, 'ignore_bounds': True})
+    _, sdpSdas = reverse_deriv(saction, Tup(Const(1)), output_list=params)
     sdpSdas = [simplify(sdpSda) for sdpSda in sdpSdas]
 
     print(f'started constructing: sddpSdas_sparse')
 
-    sddpSdas_sparse = [simplify(reverse_deriv(sdpSda, Tup(Const(1)), output_list=params, args={'ignore_deltas': True, 'ignore_bounds': True})[1]) for param_num, sdpSda in enumerate(sdpSdas)]
+    sddpSdas_sparse = [simplify(reverse_deriv(sdpSda, Tup(Const(1)), output_list=params)[1]) for param_num, sdpSda in enumerate(sdpSdas)]
     # sddpSdas_sparse = [simplify(reverse_deriv(sdpSda, Tup(Const(1)), output_list=nonzero_hessian_params(param_num))[1]) for param_num, sdpSda in enumerate(sdpSdas)]
 
     # Reduce delta exprs.
@@ -505,7 +504,7 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
 
     def construct_sparse(_sddpSdas, i=None):
         # print(f'sparse {i}')
-        return Tup(*(sddpSda for sddpSda in _sddpSdas))
+        return Tup(*(simplify(reduce_to_base(sddpSda)) for sddpSda in _sddpSdas))
     print(f'reducing deltas in sddpSdas_sparse')
     sddpSdas_sparse = [construct_sparse(_sddpSdas, i) for i, _sddpSdas in enumerate(sddpSdas_sparse)]
     # sddpSdas_sparse = [Tup(*(simplify(reduce_to_base(sddpSda)) for sddpSda in _sddpSdas)) for _sddpSdas in sddpSdas_sparse]
@@ -622,9 +621,9 @@ def main():
     holev = np.array([30, 20])
     teewall = bc.Wall(teeu[0], teeu[1], teev[0], teev[1])
     holewall = bc.Wall(holeu[0], holeu[1], holev[0], holev[1])
-    uwall1 = bc.Wall(4, -20, holeu[0], holeu[1])
-    vwall1 = bc.Wall(22, -17, 26, 2.3)
-    vwall2 = bc.Wall(26, 2.3, holev[0], holev[1])
+    uwall1 = bc.Wall(-4, -8, holeu[0], holeu[1])
+    vwall1 = bc.Wall(22, -17, 32, 2.3)
+    vwall2 = bc.Wall(32, 2.3, 30, 20)
     # vwall2 = bc.Wall(vwall1.x1, vwall1.y1, holev[0], holev[1])
 
     scalefactor = 1
@@ -659,7 +658,7 @@ def main():
     ts = np.array([start.t + (end.t - start.t) * i/args.t_samples for i in range(args.t_samples + 1)])
     tsv = np.array([start.t + (end.t*tvscale - start.t) * i/args.t_samples for i in range(args.t_samples + 1)])
     ts2 = np.array([start.t + i/24 for i in range(24*(end.t-start.t) + 1)])
-    tsv2 = np.array([start.t + i/24 for i in range(int(24*(end.t*tvscale-start.t) + 1))])
+    tsv2 = np.array([start.t + i/24 for i in range(int(24*(end.t*1.5-start.t) + 1))])
 
     uxs = list(sample_expr(ux, ts))
     uzs = list(sample_expr(uz, ts))

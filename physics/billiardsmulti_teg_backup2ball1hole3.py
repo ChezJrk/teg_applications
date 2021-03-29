@@ -245,9 +245,9 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
         0,
         k+2,
         k+2,
-        k+4,
+        k+8,
         # 0,
-        k+4,
+        k+8,
     ]
     expand_vknots = [
         k,
@@ -610,13 +610,13 @@ class Args(Tap):
     bound_eps: float = 0.05
     bound_scale: float = 100000000
     mint: float = 0
-    maxt: float = 15
+    maxt: float = 10
 
 
 def main():
     args = Args()
 
-    tvscale = 1.2
+    tvscale = 2
     timewall = bc.Wall(tvscale, 0, 0, 0)
     teeu = np.array([10, -25])
     # teeu = np.array([5, 0])
@@ -661,8 +661,8 @@ def main():
 
     ts = np.array([start.t + (end.t - start.t) * i/args.t_samples for i in range(args.t_samples + 1)])
     tsv = np.array([start.t + (end.t*tvscale - start.t) * i/args.t_samples for i in range(args.t_samples + 1)])
-    ts2 = np.array([start.t + i/24 for i in range(24*(end.t-start.t) + 1)])
-    tsv2 = np.array([start.t + i/24 for i in range(int(24*(end.t*1.5-start.t) + 1))])
+    ts2 = np.array([start.t + i/120 for i in range(120*(end.t-start.t) + 1)])
+    tsv2 = np.array([start.t + i/120 for i in range(int(120*(end.t*tvscale-start.t) + 1))])
 
     uxs = list(sample_expr(ux, ts))
     uzs = list(sample_expr(uz, ts))

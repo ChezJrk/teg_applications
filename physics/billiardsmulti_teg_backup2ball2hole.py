@@ -146,17 +146,15 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     vtpts = []
     vxpts = []
     vzpts = []
-    timewall = walls[0]
-    teewall = walls[1]
-    holewall = walls[2]
+    teewall = walls[0]
+    holewall = walls[1]
     teeu = np.array([teewall.x0, teewall.y0])
     teev = np.array([teewall.x1, teewall.y1])
     holeu = np.array([holewall.x0, holewall.y0])
     holev = np.array([holewall.x1, holewall.y1])
-    uwall1 = walls[3]
-    vwall1 = walls[4]
-    vwall2 = walls[5]
-    tvscale = timewall.x0
+    uwall1 = walls[2]
+    vwall1 = walls[3]
+    vwall2 = walls[4]
 
     thit1 = Var('thit1', mint + (maxt - mint)*0.2)
     tuwall1 = Var('tuwall1', mint + (maxt - mint)*0.3)
@@ -178,14 +176,14 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     vhit1theta = Var('vhit1theta', 0)
     vhit2theta = Var('vhit2theta', 0)
     vhit3theta = Var('vhit3theta', 0)
-    tu0 = teeu[0]
+    # tu0 = teeu[0]
+    # tu1 = teeu[1]
+    # tu0val = teeu[0]
+    # tu1val = teeu[1]
+    tu0 = uhit1x
     tu1 = teeu[1]
-    tu0val = teeu[0]
-    tu1val = teeu[1]
-    # tu0 = uhit1x
-    # tu1 = uhit1z
-    # tu0val = uhit1x.value
-    # tu1val = uhit1z.value
+    tu0val = uhit1x.value
+    tu1val = uhit1z.value
     key_upoints = [
         (mint, teeu[0], teeu[1]),
         (thit1, tu0, tu1),
@@ -200,16 +198,16 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
         (thit1 + 0, tu0 + (ru + rv) * smooth.Cos(vhit1theta), tu1 + (ru + rv) * smooth.Sin(vhit1theta)),
         (tvwall1, remap(vwall1s, 0, 1, vwall1.x0, vwall1.x1), remap(vwall1s, 0, 1, vwall1.y0, vwall1.y1)),
         (thit2 + 0, uhit2x + (ru + rv) * smooth.Cos(vhit2theta), uhit2z + (ru + rv) * smooth.Sin(vhit2theta)),
-        (tvwall2, remap(vwall2s, 0, 1, vwall2.x0, vwall2.x1), remap(vwall2s, 0, 1, vwall2.y0, vwall2.y1)),
+        # (tvwall2, remap(vwall2s, 0, 1, vwall2.x0, vwall2.x1), remap(vwall2s, 0, 1, vwall2.y0, vwall2.y1)),
         # (thit3 + 0, uhit3x + (ru + rv) * smooth.Cos(vhit3theta), uhit2z + (ru + rv) * smooth.Sin(vhit3theta)),
-        (maxt*tvscale, holeu[0], holeu[1]),
+        (maxt, holev[0], holev[1]),
     ]
     key_ubounds = [
         (None, None),
         (None, None),
         (None, None),
         (None, None),
-        (None, None),
+        # (None, None),
         # (None, None),
         (None, None),
     ]
@@ -218,7 +216,7 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
         (None, None),
         (None, None),
         (None, None),
-        (None, None),
+        # (None, None),
         # (None, None),
         (None, None),
     ]
@@ -227,7 +225,7 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
         (thit1.value, tu0val, tu1val),
         (tuwall1.value, remap(uwall1s.value, 0, 1, uwall1.x0, uwall1.x1), remap(uwall1s.value, 0, 1, uwall1.y0, uwall1.y1)),
         (thit2.value, uhit2x.value, uhit2z.value),
-        (tuwall1b.value, remap(uwall1bs.value, 0, 1, uwall1.x0, uwall1.x1), remap(uwall1bs.value, 0, 1, uwall1.y0, uwall1.y1)),
+        # (tuwall1b.value, remap(uwall1bs.value, 0, 1, uwall1.x0, uwall1.x1), remap(uwall1bs.value, 0, 1, uwall1.y0, uwall1.y1)),
         # (thit3.value, uhit3x.value, uhit3z.value),
         (maxt, holeu[0], holeu[1]),
     ]
@@ -236,36 +234,35 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
         (thit1.value, tu0val + (ru + rv) * np.cos(vhit1theta.value), tu1val + (ru + rv) * np.sin(vhit1theta.value)),
         (tvwall1.value, remap(vwall1s.value, 0, 1, vwall1.x0, vwall1.x1), remap(vwall1s.value, 0, 1, vwall1.y0, vwall1.y1)),
         (thit2.value, uhit2x.value + (ru + rv) * np.cos(vhit2theta.value), uhit2z.value + (ru + rv) * np.sin(vhit2theta.value)),
-        (tvwall2.value, remap(vwall2s.value, 0, 1, vwall2.x0, vwall2.x1), remap(vwall2s.value, 0, 1, vwall2.y0, vwall2.y1)),
+        # (tvwall2.value, remap(vwall2s.value, 0, 1, vwall2.x0, vwall2.x1), remap(vwall2s.value, 0, 1, vwall2.y0, vwall2.y1)),
         # (thit3.value, uhit3x.value + (ru + rv) * np.cos(vhit3theta.value), uhit3z.value + (ru + rv) * np.sin(vhit3theta.value)),
-        (maxt*tvscale, holeu[0], holeu[1]),
+        (maxt, holev[0], holev[1]),
     ]
-    k = 8
     expand_uknots = [
         0,
-        k,
-        k,
-        k,
+        0,
+        0,
         # 0,
-        k,
+        # 0,
+        0,
     ]
     expand_vknots = [
-        k,
-        k,
-        k,
-        k,
+        0,
+        0,
+        0,
         # 0,
-        k,
+        # 0,
+        0,
     ]
     cross_ubounds = [False for _ in key_upoints]
     cross_vbounds = [
         False,
-        # False,
-        True,
         False,
-        # False,
-        True,
+        # True,
         False,
+        False,
+        # True,
+        # False,
         # False,
         # # True,
         False,
@@ -273,22 +270,22 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     crossvaruts = [thit1, thit2]
     othervars = [
         vhit1theta,
+        vhit2theta,
+        # vhit3theta,
         uwall1s,
         vwall1s,
-        vhit2theta,
-        uwall1bs,
-        vwall2s,
-        # vhit3theta,
+        # uwall1bs,
+        # vwall2s,
     ]
     seps = 0.05
     otherbounds = [
         None,
-        (seps, 1 - seps),
-        (seps, 1 - seps),
         None,
-        (seps, 1 - seps),
-        (seps, 1 - seps),
         # None,
+        (seps, 1 - seps),
+        (seps, 1 - seps),
+        # (seps, 1 - seps),
+        # (seps, 1 - seps),
     ]
 
     bound_eps = args.bound_eps
@@ -304,7 +301,7 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
         os.extend(othervars_)
         boundothers.extend([b if b is not None else (-np.inf, np.inf) for b in otherbounds_])
     add_othervars(othervars, otherbounds)
-    def expand_key_knots(key_points, key_bounds, key_hints, expand_knots, cross_bounds, tvars, xvars, zvars, tpts_, xpts, zpts, tbounds, xbounds, zbounds, keyname='u', tscale=1.0):
+    def expand_key_knots(key_points, key_bounds, key_hints, expand_knots, cross_bounds, tvars, xvars, zvars, tpts_, xpts, zpts, tbounds, xbounds, zbounds, keyname='u'):
         for idx, (k0, k1, k0_bounds, k0_hint, k1_hint, numknots, cross_b) in enumerate(zip(key_points, key_points[1:], key_bounds, key_hints, key_hints[1:], expand_knots, cross_bounds)):
             k0t, k0x, k0z = k0
             k0bx, k0bz = k0_bounds
@@ -318,7 +315,7 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
                 crossvaridxs.append([prevtidx, prevtidx+1])
             if isinstance(k0t, Var):
                 tvars.append(k0t)
-                tbounds.append((mint+bound_eps, maxt*tscale-bound_eps))
+                tbounds.append((mint+bound_eps, maxt-bound_eps))
             if isinstance(k0x, Var):
                 xvars.append(k0x)
                 if k0bx is not None:
@@ -345,7 +342,7 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
                 tpts_.append(tvar)
                 xpts.append(xvar)
                 zpts.append(zvar)
-                tbounds.append((mint, maxt*tscale))
+                tbounds.append((mint, maxt))
                 # if k0_yonramp:
                 #     boundxs.append((-np.inf, modrampx))
                 # else:
@@ -356,7 +353,7 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
         zpts.append(key_points[-1][2])
 
     expand_key_knots(key_upoints, key_ubounds, key_uhints, expand_uknots, cross_ubounds, uts, uxs, uzs, utpts, uxpts, uzpts, bounduts, bounduxs, bounduzs, 'u')
-    expand_key_knots(key_vpoints, key_vbounds, key_vhints, expand_vknots, cross_vbounds, vts, vxs, vzs, vtpts, vxpts, vzpts, boundvts, boundvxs, boundvzs, 'v', tscale=tvscale)
+    expand_key_knots(key_vpoints, key_vbounds, key_vhints, expand_vknots, cross_vbounds, vts, vxs, vzs, vtpts, vxpts, vzpts, boundvts, boundvxs, boundvzs, 'v')
 
     ux = linspline(t, utpts, uxpts)
     uz = linspline(t, utpts, uzpts)
@@ -449,39 +446,38 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     print(f'started constructing: dSda')
     # dSda = RevDeriv(action, Tup(Const(1)), output_list=params)
     # dels = dSda.variables
-
-    dSda_vars, dSda_wdelta = reverse_deriv(action, Tup(Const(1)), output_list=params, args={'ignore_deltas': True, 'ignore_bounds': True})
+    dSda_vars, dSda_wdelta = reverse_deriv(action, Tup(Const(1)), output_list=params)
     sdSda_wdelta = simplify(dSda_wdelta)
     saction = simplify(action)
     # sforce_integral = simplify(force_integral)
-    sdSda = simplify(sdSda_wdelta)   # - sforce_integral
+    sdSda = simplify(reduce_to_base(sdSda_wdelta))   # - sforce_integral
     dSda = sdSda
     print(f'  took: {time.time() - timing_prev}')
     print(f'dSda vars: {dSda_vars}')
-    # def nonzero_hessian_param_nums(pnum):
-    #     sparsity = np.array([
-    #         [1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0],
-    #     ])
-    #     pnum = pnum % len(ts)
-    #     if pnum == 0:
-    #         nonzero_tnums = [pnum, pnum + 1]
-    #     elif pnum == len(ts) - 1:
-    #         nonzero_tnums = [pnum - 1, pnum]
-    #     else:
-    #         nonzero_tnums = [pnum - 1, pnum, pnum + 1]
-    #     return nonzero_tnums + [_ + len(ts) for _ in nonzero_tnums]
-    #     # return sparsity[pnum]
-    #
-    # def nonzero_hessian_params(pnum):
-    #     nonzero_nums = nonzero_hessian_param_nums(pnum)
-    #     return [params[nzero_num] for nzero_num in nonzero_nums]
-    #
-    # def expand_sparse_hessian_row(pnum, sparse_row):
-    #     nonzero_nums = nonzero_hessian_param_nums(pnum)
-    #     full = np.zeros(len(params))
-    #     for nzero_num, hessval in zip(nonzero_nums, sparse_row):
-    #         full[nzero_num] = hessval
-    #     return full
+    def nonzero_hessian_param_nums(pnum):
+        sparsity = np.array([
+            [1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0],
+        ])
+        pnum = pnum % len(ts)
+        if pnum == 0:
+            nonzero_tnums = [pnum, pnum + 1]
+        elif pnum == len(ts) - 1:
+            nonzero_tnums = [pnum - 1, pnum]
+        else:
+            nonzero_tnums = [pnum - 1, pnum, pnum + 1]
+        return nonzero_tnums + [_ + len(ts) for _ in nonzero_tnums]
+        # return sparsity[pnum]
+
+    def nonzero_hessian_params(pnum):
+        nonzero_nums = nonzero_hessian_param_nums(pnum)
+        return [params[nzero_num] for nzero_num in nonzero_nums]
+
+    def expand_sparse_hessian_row(pnum, sparse_row):
+        nonzero_nums = nonzero_hessian_param_nums(pnum)
+        full = np.zeros(len(params))
+        for nzero_num, hessval in zip(nonzero_nums, sparse_row):
+            full[nzero_num] = hessval
+        return full
 
     # hessian_sparsity = np.zeros((len(params), len(params)))
     # for param_num, row in enumerate(hessian_sparsity):
@@ -491,12 +487,12 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     timing_prev = time.time()
     print(f'started constructing: sdpSdas')
     # sdpSdas = [simplify(RevDeriv(saction, Tup(Const(1)), output_list=[p])) for p in params]
-    _, sdpSdas = reverse_deriv(saction, Tup(Const(1)), output_list=params, args={'ignore_deltas': True, 'ignore_bounds': True})
+    _, sdpSdas = reverse_deriv(saction, Tup(Const(1)), output_list=params)
     sdpSdas = [simplify(sdpSda) for sdpSda in sdpSdas]
 
     print(f'started constructing: sddpSdas_sparse')
 
-    sddpSdas_sparse = [simplify(reverse_deriv(sdpSda, Tup(Const(1)), output_list=params, args={'ignore_deltas': True, 'ignore_bounds': True})[1]) for param_num, sdpSda in enumerate(sdpSdas)]
+    sddpSdas_sparse = [simplify(reverse_deriv(sdpSda, Tup(Const(1)), output_list=params)[1]) for param_num, sdpSda in enumerate(sdpSdas)]
     # sddpSdas_sparse = [simplify(reverse_deriv(sdpSda, Tup(Const(1)), output_list=nonzero_hessian_params(param_num))[1]) for param_num, sdpSda in enumerate(sdpSdas)]
 
     # Reduce delta exprs.
@@ -505,7 +501,7 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
 
     def construct_sparse(_sddpSdas, i=None):
         # print(f'sparse {i}')
-        return Tup(*(sddpSda for sddpSda in _sddpSdas))
+        return Tup(*(simplify(reduce_to_base(sddpSda)) for sddpSda in _sddpSdas))
     print(f'reducing deltas in sddpSdas_sparse')
     sddpSdas_sparse = [construct_sparse(_sddpSdas, i) for i, _sddpSdas in enumerate(sddpSdas_sparse)]
     # sddpSdas_sparse = [Tup(*(simplify(reduce_to_base(sddpSda)) for sddpSda in _sddpSdas)) for _sddpSdas in sddpSdas_sparse]
@@ -580,10 +576,6 @@ def solve_teg(prob: bc.BilliardsProblem, a:ITeg) -> Tuple[Optional[bc.Path], Lis
     res = spop.minimize(action_func, init_guess, jac=d_action_func, hess=dd_action_func, method='trust-constr', constraints=lin_constraints, bounds=boundps, options={'maxiter': 1000, 'verbose': 2})
     # res = spop.least_squares(d_action_func, jac=dd_action_func, x0=init_guess, verbose=2)
 
-    # class Res(object):
-    #     def __init__(self, x):
-    #         self.x = x
-    # res = Res(init_guess)
     print(f'res: {res.x}')
     print(f'final   action: {action_func(res.x)}')
     print(f'final  daction: {d_action_func(res.x)}')
@@ -607,32 +599,28 @@ class Args(Tap):
     bound_eps: float = 0.3
     bound_scale: float = 100000000
     mint: float = 0
-    maxt: float = 15
+    maxt: float = 10
 
 
-def main():
+if __name__ == "__main__":
     args = Args()
 
-    tvscale = 1.2
-    timewall = bc.Wall(tvscale, 0, 0, 0)
-    teeu = np.array([9.3, -14.4])
+    teeu = np.array([10, -5])
     # teeu = np.array([5, 0])
-    teev = np.array([12, -20])
+    teev = np.array([12, -14])
     holeu = np.array([-2, 24])
-    holev = np.array([30, 20])
+    holev = np.array([40, 20])
     teewall = bc.Wall(teeu[0], teeu[1], teev[0], teev[1])
     holewall = bc.Wall(holeu[0], holeu[1], holev[0], holev[1])
-    uwall1 = bc.Wall(4, -20, holeu[0], holeu[1])
-    vwall1 = bc.Wall(22, -17, 26, 2.3)
-    vwall2 = bc.Wall(26, 2.3, holev[0], holev[1])
-    # vwall2 = bc.Wall(vwall1.x1, vwall1.y1, holev[0], holev[1])
+    uwall1 = bc.Wall(-4, -8, holeu[0], holeu[1])
+    vwall1 = bc.Wall(24, -14, 40, 20)
+    vwall2 = bc.Wall(vwall1.x1, vwall1.y1, holev[0], holev[1])
 
     scalefactor = 1
     start = bc.Tee(14.337 * scalefactor, 17.441 * scalefactor, args.mint)
     end = bc.Pocket(23.302 * scalefactor, 0.354 * scalefactor, args.maxt)
 
     walls = [
-        timewall,
         teewall,
         holewall,
         uwall1,
@@ -645,7 +633,7 @@ def main():
     print(f'path: {path}')
     ux, uz, vx, vz, lagrangian = debug
 
-    fig, axes = plt.subplots(nrows=3, ncols=2)
+    fig, axes = plt.subplots(nrows=2, ncols=2)
 
     def sample_path(p, ts_):
         for t_ in ts_:
@@ -657,34 +645,24 @@ def main():
             yield f
 
     ts = np.array([start.t + (end.t - start.t) * i/args.t_samples for i in range(args.t_samples + 1)])
-    tsv = np.array([start.t + (end.t*tvscale - start.t) * i/args.t_samples for i in range(args.t_samples + 1)])
     ts2 = np.array([start.t + i/24 for i in range(24*(end.t-start.t) + 1)])
-    tsv2 = np.array([start.t + i/24 for i in range(int(24*(end.t*tvscale-start.t) + 1))])
 
     uxs = list(sample_expr(ux, ts))
     uzs = list(sample_expr(uz, ts))
-    vxs = list(sample_expr(vx, tsv))
-    vzs = list(sample_expr(vz, tsv))
-    duxs = np.array(list(sample_expr(FwdDeriv(ux, [(a, 1)]), ts)))
-    duzs = np.array(list(sample_expr(FwdDeriv(uz, [(a, 1)]), ts)))
-    dvxs = np.array(list(sample_expr(FwdDeriv(vx, [(a, 1)]), ts)))
-    dvzs = np.array(list(sample_expr(FwdDeriv(vz, [(a, 1)]), ts)))
+    vxs = list(sample_expr(vx, ts))
+    vzs = list(sample_expr(vz, ts))
+    # dxs = list(sample_expr(FwdDeriv(x, [(a, 1)]), ts))
+    # dzs = list(sample_expr(FwdDeriv(z, [(a, 1)]), ts))
+    # dys = list(sample_expr(FwdDeriv(y, [(a, 1)]), ts))
     # ls = list(sample_expr(lagrangian, ts))
     uxs2 = np.array(list(sample_expr(ux, ts2)))
     uzs2 = np.array(list(sample_expr(uz, ts2)))
-    vxs2 = np.array(list(sample_expr(vx, tsv2)))
-    vzs2 = np.array(list(sample_expr(vz, tsv2)))
-    txyzs = np.array([(idx, t, (ux, uz)) for idx, (t, ux, uz) in enumerate(zip(ts2, uxs2, uzs2))])
+    vxs2 = np.array(list(sample_expr(vx, ts2)))
+    vzs2 = np.array(list(sample_expr(vz, ts2)))
+    txyzs = np.array([(idx, t, (ux, uz, vx, vz)) for idx, (t, ux, uz, vx, vz) in enumerate(zip(ts2, uxs2, uzs2, vxs2, vzs2))])
     print(f'positions = [')
     for _ in txyzs:
-        i, t, (u, v) = _
-        print(f'  [{i}, {t}, ({u}, {v})],')
-    print(f']')
-    txyzs = np.array([(idx, t, (vx, vz)) for idx, (t, vx, vz) in enumerate(zip(tsv2, vxs2, vzs2))])
-    print(f'positions = [')
-    for _ in txyzs:
-        i, t, (u, v) = _
-        print(f'  [{i}, {t}, ({u}, {v})],')
+        print(f'  {_},')
     print(f']')
 
     # bill_plot = axes[0]
@@ -694,29 +672,21 @@ def main():
     for w in walls[2:]:
         bill_plot.plot(np.array([w.x0, w.x1]), np.array([w.y0, w.y1]))
     bill_plot.scatter([teeu[0], holeu[0]], [teeu[1], holeu[1]], c='green',  marker='.')
-    bill_plot.scatter([teev[0], holeu[0]], [teev[1], holeu[1]], c='red', marker='.')
-    # bill_plot.set_aspect('equal', adjustable='box')
+    bill_plot.scatter([teev[0], holev[0]], [teev[1], holev[1]], c='red', marker='.')
+    bill_plot.set_aspect('equal', adjustable='box')
 
     axes[1][0].plot(ts, uxs)
     axes[1][0].plot(ts, uzs)
-    axes[1][0].plot(tsv, vxs)
-    axes[1][0].plot(tsv, vzs)
+    axes[1][0].plot(ts, vxs)
+    axes[1][0].plot(ts, vzs)
 
-    axes[2][0].plot(ts, duxs)
-    axes[2][0].plot(ts, dvxs)
-    axes[2][0].plot(ts, duxs + dvxs)
-    axes[2][1].plot(ts, duzs)
-    axes[2][1].plot(ts, dvzs)
-    axes[2][1].plot(ts, duzs + dvzs)
+    # axes[1][1].plot(ts, dxs)
+    # axes[1][1].plot(ts, dzs)
+    # axes[1][1].plot(ts, dys)
 
-    axes[1][1].plot(ts, duxs*duxs + duzs*duzs)
-    axes[1][1].plot(ts, dvxs*dvxs + dvzs*dvzs)
-    axes[1][1].plot(ts, duxs*duxs + duzs*duzs + dvxs*dvxs + dvzs*dvzs)
+    # axes[0][1].plot(ts, ls)
 
 
     plt.show()
     k = 1
 
-
-if __name__ == "__main__":
-    main()
