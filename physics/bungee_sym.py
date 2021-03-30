@@ -6,12 +6,35 @@ from scipy import integrate
 import matplotlib.pyplot as plt
 import numpy as np
 
-nadir = 1e-5
-apex = 5
+from tap import Tap
 
-m, g = 1, 10
-s1, s2 = 1.5, 8
-t1, t2 = 3.6, 20
+
+class Args(Tap):
+    s1: float = 1.5
+    s2: float = 8
+    t1: float = 3.6
+    t2: float = 20
+    # s1: float = 1.5
+    # s2: float = 8
+    # t1: float = 3.6
+    # t2: float = 20
+
+    nadir: float = 1e-5
+    apex: float = 5
+
+    mass: float = 1
+    gravity: float = 10
+
+
+args = Args().parse_args()
+s1 = args.s1
+s2 = args.s2
+t1 = args.t1
+t2 = args.t2
+mass = args.mass
+gravity = args.gravity
+nadir = args.nadir
+apex = args.apex
 
 x1 = t1 / s2 * (s1 + s2)
 x2 = t2 / s1 * (s1 + s2)
@@ -23,7 +46,7 @@ def s(x):
 
 
 def spring_acc(disp):
-    return g - s(disp) / m
+    return gravity - s(disp) / mass
 
 
 def dposvel_dt(U, t):
@@ -47,6 +70,8 @@ def f(x_hat):
     expr = 1 / np.sqrt(velocity)
     return expr
 
+
+print(f's1: {s1}')
 
 poss_temp = np.linspace(nadir, apex, 100)[1:-1]
 fs = list(map(f, poss_temp))

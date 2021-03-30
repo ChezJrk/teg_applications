@@ -23,22 +23,30 @@ from teg.passes.substitute import substitute
 from teg.passes.simplify import simplify
 from teg.passes.reduce import reduce_to_base
 
+from tap import Tap
 
-class Args:
-    thresholds: List[Var] = [Var('threshold1', 2), Var('threshold2', 2)]
-    scales: List[Var] = [Var('scale1', 2), Var('scale2', 1)]
 
-    mass: Const = Const(1)
-    gravity: Const = Const(10)
+class Args(Tap):
+    s1: float = 5
+    s2: float = 10
+    t1: float = 3
+    t2: float = 20
 
-    nadir: Const = Const(1e-5)
-    apex: Const = Const(5)
+    nadir: float = 1e-5
+    apex: float = 5
 
-    num_samples: int = 10
-    maxiter: int = 20
+    mass: float = 1
+    gravity: float = 10
+
+    num_samples: int = 50
+    maxiter: int = 100
+    tol: int = 1e-8
 
     backend: str = 'numpy'
 
+    def process_args(self):
+        self.thresholds = [Var('threshold1', self.t1), Var('threshold2', self.t2)]
+        self.scales = [Var('scale1', self.s1), Var('scale2', self.s2)]
 
 def stress(strain: ITeg, args: Args) -> ITeg:
     """Stress curve given the strain for a string-bungee system.
@@ -89,8 +97,8 @@ def solve_for_time_given_position(args: Args):
 
 def optimize(args: Args):
     """Optimizing both yield strength and scale for springiness. """
-    g = args.gravity.value
-    m = args.mass.value
+    g = args.gravity
+    m = args.mass
     num_samples = args.num_samples
     loss_values = []
     scale_values = []
@@ -133,7 +141,7 @@ def optimize(args: Args):
         # import ipdb; ipdb.set_trace()
         param_assigns = dict(zip(args.scales + args.thresholds, values))
         min_stress = min([evaluate(stress(Const(x), args), param_assigns, num_samples=num_samples, backend=args.backend)
-                          for x in np.arange(args.nadir.value, args.apex.value, 0.1)])
+                          for x in np.arange(args.nadir, args.apex, 0.1)])
         return min_stress
 
     def displacement_is_bounded(values):
@@ -159,9 +167,9 @@ def optimize(args: Args):
 
         param_assigns = dict(zip(args.scales + args.thresholds, values))
         max_kinetic_elastic = max([evaluate(kinetic_elastic(x_hat), param_assigns, num_samples=num_samples, backend=args.backend)
-                                   for x_hat in np.arange(args.nadir.value, args.apex.value, 0.1)])
+                                   for x_hat in np.arange(args.nadir, args.apex, 0.1)])
 
-        total_energy = m * g * args.apex.value
+        total_energy = m * g * args.apex
         return total_energy - max_kinetic_elastic
 
     ### loss function plotting
@@ -214,19 +222,22 @@ def optimize(args: Args):
 
     options = {'maxiter': args.maxiter}
     print('Starting minimization')
-    res = minimize(loss_and_grads, [var.value for var in (args.scales + args.thresholds)], constraints=cons, tol=1e-1, jac=True, options=options)
+    res = minimize(loss_and_grads, [var.value for var in (args.scales + args.thresholds)], constraints=cons, tol=args.tol, jac=True, options=options)
     print('The final parameter values are', res.x)
+    print('Command line args')
+    s1, s2, t1, t2 = res.x
+    print(f'--s1 {s1} --s2 {s2} --t1 {t1} --t2 {t2}')
     print('Ending minimization')
     return loss_values, scale_values, threshold_values, res.x
 
 
 if __name__ == "__main__":
 
-    args = Args()
+    args = Args().parse_args()
     scales_init, thresholds_init = [scale.value for scale in args.scales], [threshold.value for threshold in args.thresholds]
     loss_values, scale_values, threshold_values, final_param_vals = optimize(args)
 
-    strains = np.arange(0, args.apex.value, step=0.01)
+    strains = np.arange(0, args.apex, step=0.01)
     param_assigns = dict(zip(args.scales + args.thresholds, scales_init + thresholds_init))
     stresses_before = [evaluate(stress(Const(strain), args), param_assigns, num_samples=args.num_samples, backend=args.backend)
                        for strain in strains]
