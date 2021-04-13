@@ -36,13 +36,15 @@ gravity = args.gravity
 nadir = args.nadir
 apex = args.apex
 
-x1 = t1 / s2 * (s1 + s2)
-x2 = t2 / s1 * (s1 + s2)
-hm = 2 * s1 * s2 / (s1 + s2)
-
 
 def s(x):
-    return (1 - UnitStep(x - x1)) * hm * x + (1 - UnitStep(x - x2)) * UnitStep(x - x1) * s2 * x + UnitStep(x - x2) * 10
+    x1 = s1 * x / (s1 + s2)
+    x2 = s2 * x / (s1 + s2)
+    neither_lock = s1 * x1 + s2 * x2 * UnitStep(t1 - x1) * UnitStep(t2 - x2)
+    spring1_lock = s1 * (x - t1) + s2 * t1 * UnitStep(t1 - x1) * UnitStep(x2 - t2)
+    spring2_lock = s2 * (x - t2) + s1 * t2 * UnitStep(x1 - t1) * UnitStep(t2 - x2)
+    both_lock = gravity * UnitStep(x1 - t1) * UnitStep(x2 - t2)
+    return neither_lock + spring1_lock + spring2_lock + both_lock
 
 
 def spring_acc(disp):
@@ -56,8 +58,8 @@ def dposvel_dt(U, t):
 
 def ode_solution_wrt_time_np():
     def f(x_hat):
-        velocity = 2 * integrate.quad(spring_acc, 0, x_hat)[0]
-        expr = 1 / np.sqrt(velocity)
+        velocity_squared = 2 * integrate.quad(spring_acc, 0, x_hat)[0]
+        expr = 1 / np.sqrt(velocity_squared)
         return expr
 
     res = integrate.quad(f, nadir, apex)[0]
@@ -65,37 +67,36 @@ def ode_solution_wrt_time_np():
 
 
 def f(x_hat):
-    print(x_hat)
-    velocity = 2 * integrate.quad(spring_acc, 0, x_hat)[0]
-    expr = 1 / np.sqrt(velocity)
+    velocity_squared = 2 * integrate.quad(spring_acc, 0, x_hat)[0]
+    expr = 1 / np.sqrt(velocity_squared)
     return expr
 
-
-print(f's1: {s1}')
 
 poss_temp = np.linspace(nadir, apex, 100)[1:-1]
 fs = list(map(f, poss_temp))
 
 posvel0 = [0, 0]
-xs = np.linspace(0, 10, 200)
-posvel = odeint(dposvel_dt, posvel0, xs)
+num_increments = 200
+ts = np.linspace(0, 10, num_increments)
+posvel = odeint(dposvel_dt, posvel0, ts)
 poss = posvel[:, 0]
+first_osilation = poss[0: int(num_increments * 0.3)]
+print(f'At time {ts[list(poss).index(max(first_osilation))]}, the position is maximal, reaching {max(first_osilation)}')
 vels = posvel[:, 1]
 accs = list(map(spring_acc, poss))
 
-fig, axes = plt.subplots(nrows=1, ncols=2)
+fig, axes = plt.subplots(nrows=1, ncols=1)
 plat = plt
 
-plt = axes[0]
+plt = axes
 plt.set(xlabel='t', ylabel='poss')
 # plt.title("Harmonic oscillator")
-plt.plot(xs, poss, label='pos')
-plt.plot(xs, vels, label='vel')
-plt.plot(xs, accs, label='acc')
+plt.plot(ts, poss, label='pos')
+plt.plot(ts, vels, label='vel')
+plt.plot(ts, accs, label='acc')
 plt.legend()
 
-plt = axes[1]
-# plt.title("hello oscillator")
-plt.plot(poss_temp, fs)
+# plt = axes[1]
+# plt.plot(poss_temp, fs)
 
 plat.show()
