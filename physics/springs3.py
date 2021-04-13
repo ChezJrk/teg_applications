@@ -60,7 +60,7 @@ def stress(strain: ITeg, args: Args) -> ITeg:
     :threshold: is the string length s - the bungee rest length b
     :scale: is the elastic modulus of the bungee
 
-    (k1x1 + k2x2) H(l1 - x1)H(l2 - x2) + (k1(x - l1) + k2 l1) H(l1 - x1)H(x2 - l2) + (k2(x - l2) + k1 l2) H(l1 - x1) H(x2 - l2) + g H(x1 - l1) H(x2 - l2)
+    (k1x1 + k2x2) H(l1 - x1)H(l2 - x2) + (k1(x - l1) + k2 l1) H(l1 - x1)H(x2 - l2) + (k2(x - l2) + k1 l2) H(x1 - l1) H(l2 - x2) + g H(x1 - l1) H(x2 - l2)
     x1 = k2 x/(k1 + k2), x2 = k1 x/(k1 + k2)
     """
     scale1, scale2 = args.scales
@@ -175,12 +175,14 @@ def optimize(args: Args):
     def jac(values):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
         grads = evaluate(deriv, param_assigns, num_samples=num_samples, backend=args.backend)
+        print(f'grad: {grads}')
         return grads
 
     def hess(values):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
         hesses = [evaluate(eltwise, param_assigns, num_samples=num_samples, backend=args.backend)
                   for eltwise in second_deriv]
+        print(f'hess: {hesses}')
         return hesses
 
     def generate_max_acceleration_is_bounded():
