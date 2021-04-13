@@ -3,6 +3,8 @@ from tqdm import trange
 from scipy.optimize import minimize
 import numpy as np
 from typing import List
+import os
+import pickle
 
 from teg import (
     ITeg,
@@ -15,8 +17,9 @@ from teg import (
     TegVar,
 )
 from teg.derivs.reverse_deriv import reverse_deriv
+from teg.derivs.fwd_deriv import fwd_deriv
 from teg.derivs import FwdDeriv, RevDeriv
-from physics.smooth import InvertSqrt, IsNotNan
+# from physics.smooth import InvertSqrt, IsNotNan
 from teg.math.smooth import Invert, Sqrt
 from teg.eval import evaluate
 from teg.passes.substitute import substitute
@@ -27,10 +30,10 @@ from tap import Tap
 
 
 class Args(Tap):
-    s1: float = 5
-    s2: float = 10
+    s1: float = 3
+    s2: float = 3
     t1: float = 3
-    t2: float = 20
+    t2: float = 3
 
     nadir: float = 1e-5
     apex: float = 5
@@ -39,14 +42,16 @@ class Args(Tap):
     gravity: float = 10
 
     num_samples: int = 50
-    maxiter: int = 100
+    maxiter: int = 40
     tol: int = 1e-8
 
-    backend: str = 'numpy'
+    backend: str = 'C'
+    deriv_cache: str = './physics/springs_cached_derivs'
 
     def process_args(self):
         self.thresholds = [Var('threshold1', self.t1), Var('threshold2', self.t2)]
         self.scales = [Var('scale1', self.s1), Var('scale2', self.s2)]
+
 
 def stress(strain: ITeg, args: Args) -> ITeg:
     """Stress curve given the strain for a string-bungee system.
@@ -54,6 +59,9 @@ def stress(strain: ITeg, args: Args) -> ITeg:
     :strain: is downward displacement
     :threshold: is the string length s - the bungee rest length b
     :scale: is the elastic modulus of the bungee
+
+    (k1x1 + k2x2) H(l1 - x1)H(l2 - x2) + (k1(x - l1) + k2 l1) H(l1 - x1)H(x2 - l2) + (k2(x - l2) + k1 l2) H(l1 - x1) H(x2 - l2) + g H(x1 - l1) H(x2 - l2)
+    x1 = k2 x/(k1 + k2), x2 = k1 x/(k1 + k2)
     """
     scale1, scale2 = args.scales
     threshold1, threshold2 = args.thresholds
@@ -67,9 +75,12 @@ def stress(strain: ITeg, args: Args) -> ITeg:
     scaled_thresh1 = (scale1 + scale2) * threshold1
     scaled_thresh2 = (scale1 + scale2) * threshold2
 
+    lock1 = scale1 * (delta_x - threshold1) + scale2 * threshold1
+    lock2 = scale2 * (delta_x - threshold2) + scale1 * threshold2
+
     neither_lock = IfElse((delta_x1_raw <= scaled_thresh1) & (delta_x2_raw <= scaled_thresh2), scale1 * delta_x1 + scale2 * delta_x2, 0)
-    spring1_lock = IfElse((delta_x1_raw > scaled_thresh1) & (delta_x2_raw < scaled_thresh2), scale2 * delta_x, 0)
-    spring2_lock = IfElse((delta_x1_raw < scaled_thresh1) & (delta_x2_raw > scaled_thresh2), scale1 * delta_x, 0)
+    spring1_lock = IfElse((delta_x1_raw > scaled_thresh1) & (delta_x2_raw < scaled_thresh2), lock1, 0)
+    spring2_lock = IfElse((delta_x1_raw < scaled_thresh1) & (delta_x2_raw > scaled_thresh2), lock2, 0)
     both_lock = IfElse((delta_x1_raw >= scaled_thresh1) & (delta_x2_raw >= scaled_thresh2), g, 0)
 
     e = IfElse(delta_x < 0, 0, neither_lock + spring1_lock + spring2_lock + both_lock)
@@ -84,15 +95,18 @@ def solve_for_time_given_position(args: Args):
     nadir, apex = args.nadir, args.apex
 
     disp = TegVar('disp')
-    x_hat = TegVar('x_hat')
+    # x_hat = TegVar('x_hat')
+    x_hat = Const(70, 'x_hat')
 
     # Solution to the second-order linear ODE
     inner_integrand = g - stress(disp, args) / m
     velocity = 2 * Teg(0, x_hat, inner_integrand, disp)
-    expr = InvertSqrt(velocity)
-    ode_solution_wrt_time = Teg(nadir, apex, expr, x_hat)
+    # expr = InvertSqrt(velocity)
+    expr = 1 / Sqrt(velocity)
+    # ode_solution_wrt_time = Teg(nadir, apex, expr, x_hat)
 
-    return ode_solution_wrt_time, expr
+    # return ode_solution_wrt_time, expr
+    return expr
 
 
 def optimize(args: Args):
@@ -104,47 +118,91 @@ def optimize(args: Args):
     scale_values = []
     threshold_values = []
 
-    expr, invert_sqrt_vel = solve_for_time_given_position(args)
+    # expr, invert_sqrt_vel = solve_for_time_given_position(args)
+    expr = solve_for_time_given_position(args)
     expr = simplify(expr)
     # deriv = simplify(reduce_to_base(reverse_deriv(expr, output_list=[*args.scales, *args.thresholds], args={'ignore_deltas': True, 'ignore_bounds': True})[1]))
-    deriv = simplify(reduce_to_base(reverse_deriv(expr, output_list=[*args.scales, *args.thresholds])[1]))
-    deriv = simplify(RevDeriv(expr, Tup(Const(1))))
 
-    def loss_and_grads(values):
+    deriv_path = os.path.join(args.deriv_cache, 'deriv.pkl')
+    second_deriv_path = os.path.join(args.deriv_cache, 'second_deriv.pkl')
+    if not os.path.isfile(second_deriv_path):
+        print('Computing the first derivative')
+        out_list = [*args.scales, *args.thresholds]
+        silly_deriv = reverse_deriv(expr, output_list=out_list)[1]
+        x_hat = TegVar('x_hat')
+        nadir, apex = args.nadir, args.apex
+        deriv = simplify(reduce_to_base(silly_deriv))
+        deriv = Teg(nadir, apex, substitute(deriv, Const(70, 'x_hat'), x_hat), x_hat)
+
+        print('Computing the second derivative')
+
+        second_deriv = []
+        for i, eltwise_deriv in enumerate(silly_deriv):
+            print(f'Iteration {i}: second derivative.')
+
+            eltwise_deriv = simplify(reduce_to_base(eltwise_deriv))
+            print('Computing reverse derivative')
+            sndd = reverse_deriv(eltwise_deriv, output_list=out_list)[1]
+            print('Reducing to base')
+            reduced_sndd = reduce_to_base(sndd, timing=True)
+            print('Simplifying')
+            res = simplify(reduced_sndd)
+            second_deriv_i = substitute(res, Const(70, 'x_hat'), x_hat)
+            second_deriv_i = Teg(nadir, apex, second_deriv_i, x_hat)
+            second_deriv.append(second_deriv_i)
+
+        pickle.dump(deriv, open(deriv_path, "wb"))
+        pickle.dump(second_deriv, open(second_deriv_path, "wb"))
+
+    else:
+        deriv = pickle.load(open(deriv_path, "rb"))
+        second_deriv = pickle.load(open(second_deriv_path, "rb"))
+
+    def loss(values):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
-        loss = evaluate(expr, param_assigns, num_samples=num_samples, backend=args.backend)
-        vel_blows = invert_sqrt_vel.blow_up
-        big_loss_const = 50
-        loss = big_loss_const if vel_blows else loss
-        invert_sqrt_vel.blow_up = False
+        s1, s2, t1, t2 = values
+        print(f'--s1 {s1} --s2 {s2} --t1 {t1} --t2 {t2}')
 
-        grads = evaluate(deriv, param_assigns, num_samples=num_samples, backend=args.backend)
-        grads = (1, 1) if vel_blows else grads
+        loss = evaluate(expr, param_assigns, num_samples=num_samples, backend=args.backend)
         print(f'loss: {loss}')
-        # print(f'scale: {scale_val}\n')
 
         loss_values.append(loss)
         scale_values.append([scale.value for scale in args.scales])
         threshold_values.append([threshold.value for threshold in args.thresholds])
 
-        return loss, grads
+        return loss
 
-    def max_acceleration_bounded(values):
-        # max(|acc|) < g
-        # since acc < 0, -acc >= 0
-        # max(-acc) < g
-        # max(-(stress(disp) - g)) < g
-        # max(-stress(disp)) < 0
-        # -max(-stress(disp)) > 0
-        # min(stress) > 0
-
-        # import ipdb; ipdb.set_trace()
+    def jac(values):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
-        min_stress = min([evaluate(stress(Const(x), args), param_assigns, num_samples=num_samples, backend=args.backend)
-                          for x in np.arange(args.nadir, args.apex, 0.1)])
-        return min_stress
+        grads = evaluate(deriv, param_assigns, num_samples=num_samples, backend=args.backend)
+        return grads
 
-    def displacement_is_bounded(values):
+    def hess(values):
+        param_assigns = dict(zip(args.scales + args.thresholds, values))
+        hesses = [evaluate(eltwise, param_assigns, num_samples=num_samples, backend=args.backend)
+                  for eltwise in second_deriv]
+        return hesses
+
+    def generate_max_acceleration_is_bounded():
+        # max(|acc|) < 2g
+        # since acc < 0, -acc >= 0
+        # max(-acc) < 2g
+        # max(-(stress(disp) - g)) < 2g
+        # max(-stress(disp)) < g
+        # -max(-stress(disp)) + g > 0
+        # min(stress) + g > 0
+        x = Var('x')
+        expr_to_min = stress(x, args) + g
+
+        def max_acceleration_is_bounded(values):
+            param_assigns = dict(zip(args.scales + args.thresholds, values))
+            min_stress = min([evaluate(expr_to_min, {**param_assigns, x: val}, num_samples=num_samples, backend=args.backend)
+                              for val in np.arange(args.nadir, args.apex, 0.1)])
+            return min_stress
+
+        return max_acceleration_is_bounded
+
+    def generate_displacement_is_bounded():
         # total energy = elastic potential + gravitation potential + kinetic
         # gravitation potential > 0 at every position
         # total energy - max(elastic potential + kinetic) > 0
@@ -164,13 +222,17 @@ def optimize(args: Args):
             kinetic = m * vel_squared(x_hat) / 2
             elastic = vel_squared(x_hat) / 2
             return kinetic + elastic
+        x_hat = Var('x_hat')
+        kinetic_expr = kinetic_elastic(x_hat)
 
-        param_assigns = dict(zip(args.scales + args.thresholds, values))
-        max_kinetic_elastic = max([evaluate(kinetic_elastic(x_hat), param_assigns, num_samples=num_samples, backend=args.backend)
-                                   for x_hat in np.arange(args.nadir, args.apex, 0.1)])
+        def displacement_is_bounded(values):
+            param_assigns = dict(zip(args.scales + args.thresholds, values))
+            max_kinetic_elastic = max([evaluate(kinetic_expr, {**param_assigns, x_hat: val}, num_samples=num_samples, backend=args.backend)
+                                       for val in np.arange(args.nadir, args.apex, 0.1)])
 
-        total_energy = m * g * args.apex
-        return total_energy - max_kinetic_elastic
+            total_energy = m * g * args.apex
+            return total_energy - max_kinetic_elastic
+        return displacement_is_bounded
 
     ### loss function plotting
     # def compute_samples (sval, tval):
@@ -216,13 +278,17 @@ def optimize(args: Args):
     ### plotting end
 
     cons = [
-        {'type': 'ineq', 'fun': max_acceleration_bounded},
-        {'type': 'ineq', 'fun': displacement_is_bounded},
+        {'type': 'ineq', 'fun': generate_max_acceleration_is_bounded()},
+        {'type': 'ineq', 'fun': generate_displacement_is_bounded()},
     ]
 
-    options = {'maxiter': args.maxiter}
+    options = {'maxiter': args.maxiter, 'verbose': 2}
     print('Starting minimization')
-    res = minimize(loss_and_grads, [var.value for var in (args.scales + args.thresholds)], constraints=cons, tol=args.tol, jac=True, options=options)
+
+    init_guess = [var.value for var in (args.scales + args.thresholds)]
+    res = minimize(loss, init_guess, jac=jac, hess=hess, method='trust-constr', constraints=cons, options=options)
+
+    # res = minimize(loss_and_grads, [var.value for var in (args.scales + args.thresholds)], constraints=cons, tol=args.tol, jac=True, options=options, bounds=((0, 10), (0, 10), (0, 10), (0, 10)))
     print('The final parameter values are', res.x)
     print('Command line args')
     s1, s2, t1, t2 = res.x
@@ -239,11 +305,14 @@ if __name__ == "__main__":
 
     strains = np.arange(0, args.apex, step=0.01)
     param_assigns = dict(zip(args.scales + args.thresholds, scales_init + thresholds_init))
-    stresses_before = [evaluate(stress(Const(strain), args), param_assigns, num_samples=args.num_samples, backend=args.backend)
-                       for strain in strains]
+
+    strain = Var('strain')
+    stress_expr = stress(strain, args)
+    stresses_before = [evaluate(stress_expr, {**param_assigns, strain: val}, num_samples=args.num_samples, backend=args.backend)
+                       for val in strains]
     param_assigns = dict(zip(args.scales + args.thresholds, final_param_vals))
-    stresses_after = [evaluate(stress(Const(strain), args), num_samples=args.num_samples, backend=args.backend)
-                      for strain in strains]
+    stresses_after = [evaluate(stress_expr, {**param_assigns, strain: val}, num_samples=args.num_samples, backend=args.backend)
+                      for val in strains]
 
     # fig, axes = plt.subplots(nrows=2, ncols=3)
     # plat = plt
