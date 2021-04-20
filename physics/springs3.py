@@ -45,6 +45,7 @@ class Args(Tap):
     maxiter: int = 40
     tol: int = 1e-8
 
+    ignore_deltas: bool = False
     backend: str = 'C'
     deriv_cache: str = './physics/springs_cached_derivs'
 
@@ -114,6 +115,7 @@ def optimize(args: Args):
     g = args.gravity
     m = args.mass
     num_samples = args.num_samples
+    nadir, apex = args.nadir, args.apex
     loss_values = []
     scale_values = []
     threshold_values = []
@@ -121,16 +123,17 @@ def optimize(args: Args):
     # expr, invert_sqrt_vel = solve_for_time_given_position(args)
     expr = solve_for_time_given_position(args)
     expr = simplify(expr)
+    x_hat = TegVar('x_hat')
+    loss_expr = Teg(nadir, apex, substitute(expr, Const(70, 'x_hat'), x_hat), x_hat)
     # deriv = simplify(reduce_to_base(reverse_deriv(expr, output_list=[*args.scales, *args.thresholds], args={'ignore_deltas': True, 'ignore_bounds': True})[1]))
 
-    deriv_path = os.path.join(args.deriv_cache, 'deriv.pkl')
-    second_deriv_path = os.path.join(args.deriv_cache, 'second_deriv.pkl')
+    ignore_deltas = 'no_delta_' if args.ignore_deltas else ''
+    deriv_path = os.path.join(args.deriv_cache, f'{ignore_deltas}deriv.pkl')
+    second_deriv_path = os.path.join(args.deriv_cache, f'{ignore_deltas}second_deriv.pkl')
     if not os.path.isfile(second_deriv_path):
         print('Computing the first derivative')
         out_list = [*args.scales, *args.thresholds]
         silly_deriv = reverse_deriv(expr, output_list=out_list)[1]
-        x_hat = TegVar('x_hat')
-        nadir, apex = args.nadir, args.apex
         deriv = simplify(reduce_to_base(silly_deriv))
         deriv = Teg(nadir, apex, substitute(deriv, Const(70, 'x_hat'), x_hat), x_hat)
 
@@ -162,8 +165,7 @@ def optimize(args: Args):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
         s1, s2, t1, t2 = values
         print(f'--s1 {s1} --s2 {s2} --t1 {t1} --t2 {t2}')
-
-        loss = evaluate(expr, param_assigns, num_samples=num_samples, backend=args.backend)
+        loss = evaluate(loss_expr, param_assigns, num_samples=num_samples, backend=args.backend)
         print(f'loss: {loss}')
 
         loss_values.append(loss)
