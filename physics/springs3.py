@@ -75,8 +75,8 @@ def stress(strain: ITeg, args: Args) -> ITeg:
     scaled_thresh1 = (scale1 + scale2) * threshold1
     scaled_thresh2 = (scale1 + scale2) * threshold2
 
-    lock1 = scale1 * (delta_x - threshold1) + scale2 * threshold1
-    lock2 = scale2 * (delta_x - threshold2) + scale1 * threshold2
+    lock1 = scale1 * threshold1 + scale2 * (delta_x - threshold1)
+    lock2 = scale2 * threshold2 + scale1 * (delta_x - threshold2)
 
     neither_lock = IfElse((delta_x1_raw <= scaled_thresh1) & (delta_x2_raw <= scaled_thresh2), scale1 * delta_x1 + scale2 * delta_x2, 0)
     spring1_lock = IfElse((delta_x1_raw > scaled_thresh1) & (delta_x2_raw < scaled_thresh2), lock1, 0)
