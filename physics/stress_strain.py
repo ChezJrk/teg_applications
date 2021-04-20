@@ -1,9 +1,38 @@
 from __future__ import annotations
 import numpy as np
 from scipy.interpolate import UnivariateSpline
+from scipy.integrate import odeint
+from scipy import integrate
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from functools import partial
+
+from tap import Tap
+
+
+class Args(Tap):
+    k1: float = 3
+    k2: float = 3
+    t1: float = 3
+    t2: float = 3
+
+    nadir: float = 1e-5
+    apex: float = 5
+
+    mass: float = 1
+    gravity: float = 10
+
+
+args = Args().parse_args()
+k1_init = args.k1
+k2_init = args.k2
+t1_init = args.t1
+t2_init = args.t2
+mass = args.mass
+gravity = args.gravity
+nadir = args.nadir
+apex = args.apex
+
 
 class Params(object):
     def __init__(self, ks, ts):
@@ -21,9 +50,9 @@ class Params(object):
         self.t2 = ps.t2
 
 
-params = Params([4, 3], [3, 3])
+params = Params([k1_init, k2_init], [t1_init, t2_init])
 
-def func(params, x):
+def stress_func(params, x):
     def UStep(t):
         return 1 if t > 0 else 0
     k1 = params.k1
@@ -41,20 +70,48 @@ def func(params, x):
     ret = neither_lock + spring1_lock + spring2_lock + both_lock
     return ret
 
+
+def spring_acc(disp):
+    return gravity - stress_func(params, disp) / mass
+
+def dposvel_dt(U, t):
+    # Here U is a vector such that y=U[0] and z=U[1]. This function should return [y', z']
+    return [U[1], spring_acc(U[0])]
+
+
+def forward_sim(ts):
+    posvel0 = [0, 0]
+    posvel = odeint(dposvel_dt, posvel0, ts)
+    poss = posvel[:, 0]
+    first_osilation = poss[0: int(num_increments * 0.3)]
+    print(f'At time {ts[list(poss).index(max(first_osilation))]}, the position is maximal, reaching {max(first_osilation)}')
+    vels = posvel[:, 1]
+    accs = np.array(list(map(spring_acc, poss)))
+    return np.array([poss, vels, accs])
+
+
 # Initial x and y arrays
 xs = np.linspace(0, 10, 1000)
-y = np.array(list(map(partial(func, params), xs)))
+y = np.array(list(map(partial(stress_func, params), xs)))
 # y = np.sin(0.5 * x) * np.sin(x * np.random.randn(30))
 # Spline interpolation
 spline = UnivariateSpline(xs, y, s=6)
 x_spline = np.linspace(0, 10, 1000)
-y_spline = np.array(list(map(partial(func, params), x_spline)))
+y_spline = np.array(list(map(partial(stress_func, params), x_spline)))
 # Plotting
 fig = plt.figure()
 plt.subplots_adjust(bottom=0.25)
-ax = fig.subplots()
-p = ax.plot(xs, y)
-p, = ax.plot(x_spline, y_spline, 'g')
+(ax1, ax2) = fig.subplots(nrows=2, ncols=1)
+stress_strain_plot = ax1.plot(xs, y)
+stress_strain_plot, = ax1.plot(x_spline, y_spline, 'g')
+
+num_increments = 200
+ts = np.linspace(0, 10, num_increments)
+init_sim = forward_sim(ts)
+pos_plot, = ax2.plot(ts, init_sim[0], label='pos')
+vel_plot, = ax2.plot(ts, init_sim[1], label='vel')
+acc_plot, = ax2.plot(ts, init_sim[2], label='acc')
+ax2.legend()
 
 
 # Defining the Slider button
@@ -83,10 +140,18 @@ def t2_update(val):
     new_param_update(Params([params.k1, params.k2], [params.t1, val]))
 def new_param_update(ps):
     params.update(ps)
-    new_ys = np.array(list(map(partial(func, params), x_spline)))
+    new_ys = np.array(list(map(partial(stress_func, params), x_spline)))
     # spline = UnivariateSpline(xs, new_ys, s=1)
-    p.set_ydata(new_ys)
+    stress_strain_plot.set_ydata(new_ys)
+    new_simdata = forward_sim(ts)
+    pos_plot.set_ydata(new_simdata[0])
+    vel_plot.set_ydata(new_simdata[1])
+    acc_plot.set_ydata(new_simdata[2])
     # redrawing the figure
+    ax1.relim()
+    ax1.autoscale_view(True, True, True)
+    ax2.relim()
+    ax2.autoscale_view(True, True, True)
     fig.canvas.draw()
 
 

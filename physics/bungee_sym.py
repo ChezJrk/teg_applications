@@ -10,10 +10,10 @@ from tap import Tap
 
 
 class Args(Tap):
-    s1: float = 1.5
-    s2: float = 8
-    t1: float = 3.6
-    t2: float = 20
+    s1: float = 3
+    s2: float = 3
+    t1: float = 3
+    t2: float = 3
     # s1: float = 1.5
     # s2: float = 8
     # t1: float = 3.6
