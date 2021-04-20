@@ -133,7 +133,10 @@ def optimize(args: Args):
     if not os.path.isfile(second_deriv_path):
         print('Computing the first derivative')
         out_list = [*args.scales, *args.thresholds]
-        silly_deriv = reverse_deriv(expr, output_list=out_list)[1]
+        if args.ignore_deltas:
+            silly_deriv = reverse_deriv(expr, output_list=out_list, args={'ignore_deltas': True})[1]
+        else:
+            silly_deriv = reverse_deriv(expr, output_list=out_list)[1]
         deriv = simplify(reduce_to_base(silly_deriv))
         deriv = Teg(nadir, apex, substitute(deriv, Const(70, 'x_hat'), x_hat), x_hat)
 
@@ -145,7 +148,10 @@ def optimize(args: Args):
 
             eltwise_deriv = simplify(reduce_to_base(eltwise_deriv))
             print('Computing reverse derivative')
-            sndd = reverse_deriv(eltwise_deriv, output_list=out_list)[1]
+            if args.ignore_deltas:
+                sndd = reverse_deriv(eltwise_deriv, output_list=out_list, args={'ignore_deltas': True})[1]
+            else:
+                sndd = reverse_deriv(eltwise_deriv, output_list=out_list)[1]
             print('Reducing to base')
             reduced_sndd = reduce_to_base(sndd, timing=True)
             print('Simplifying')
