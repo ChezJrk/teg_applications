@@ -84,9 +84,11 @@ def forward_sim(ts):
     posvel = odeint(dposvel_dt, posvel0, ts)
     poss = posvel[:, 0]
     first_osilation = poss[0: int(num_increments * 0.3)]
-    print(f'At time {ts[list(poss).index(max(first_osilation))]}, the position is maximal, reaching {max(first_osilation)}')
     vels = posvel[:, 1]
     accs = np.array(list(map(spring_acc, poss)))
+    tmaxp = ts[list(poss).index(max(first_osilation))]
+    maxabsa = max(list(map(abs, accs)))
+    print(f'At time {tmaxp}, the position is maximal, reaching {max(first_osilation)}; max abs acceleration is {maxabsa}')
     return np.array([poss, vels, accs])
 
 
@@ -117,16 +119,16 @@ ax2.legend()
 # Defining the Slider button
 # xposition, yposition, width and height
 k1_ax = plt.axes([0.25, 0.16, 0.65, 0.03])
-k1_slider = Slider(k1_ax, 'k1', 0.1, 6, valinit=params.k1, valstep=0.1)
+k1_slider = Slider(k1_ax, 'k1', 0.1, 10, valinit=params.k1, valstep=0.1)
 
 k2_ax = plt.axes([0.25, 0.11, 0.65, 0.03])
-k2_slider = Slider(k2_ax, 'k2', 0.1, 6, valinit=params.k2, valstep=0.1)
+k2_slider = Slider(k2_ax, 'k2', 0.1, 10, valinit=params.k2, valstep=0.1)
 
 t1_ax = plt.axes([0.25, 0.06, 0.65, 0.03])
-t1_slider = Slider(t1_ax, 't1', 0.1, 30, valinit=params.t1, valstep=0.1)
+t1_slider = Slider(t1_ax, 't1', 0.1, 10, valinit=params.t1, valstep=0.1)
 
 t2_ax = plt.axes([0.25, 0.01, 0.65, 0.03])
-t2_slider = Slider(t2_ax, 't2', 0.1, 30, valinit=params.t2, valstep=0.1)
+t2_slider = Slider(t2_ax, 't2', 0.1, 10, valinit=params.t2, valstep=0.1)
 
 
 # Updating the plot
