@@ -206,37 +206,24 @@ def optimize(args: Args):
 
         return max_acceleration_is_bounded
 
-    def generate_displacement_is_bounded():
-        # total energy = elastic potential + gravitation potential + kinetic
-        # gravitation potential > 0 at every position
-        # total energy - max(elastic potential + kinetic) > 0
+    def generate_displacement_is_constrained():
+        # x'' = f(x), x(0) = 0, x'(0) = 0
+        # x' = ±sqrt(2(F(x) - F(0)))
+        # x' = 0 when F(x) - F(0) = 0
+        # max displacement occurs at position s when int_0^s f(z) dz = 0
 
-        # Assuming initially no elastic potential and at rest (no kinetic)
-        # initial potential - max(work + kinetic)
-        # initial potential - max_x(integral_x^apex force + kinetic)
-        # (m=1)(g)(apex) - max_x((m=1)v(x) + 1/2 (m=1)v(x)^2) > 0
-
-        def vel_squared(x_hat):
+        def half_vel_squared():
             disp = TegVar('disp')
-            inner_integrand = stress(disp, args) / m - g
-            velocity_squared = 2 * Teg(x_hat, args.apex, inner_integrand, disp)
-            return velocity_squared
+            inner_integrand = g - stress(disp, args) / m
+            half_velocity_squared = Teg(args.nadir, args.apex, inner_integrand, disp)
+            return half_velocity_squared
 
-        def kinetic_elastic(x_hat):
-            kinetic = m * vel_squared(x_hat) / 2
-            elastic = vel_squared(x_hat) / 2
-            return kinetic + elastic
-        x_hat = Var('x_hat')
-        kinetic_expr = kinetic_elastic(x_hat)
-
-        def displacement_is_bounded(values):
+        expr = half_vel_squared()
+        def displacement_is_constrained(values):
             param_assigns = dict(zip(args.scales + args.thresholds, values))
-            max_kinetic_elastic = max([evaluate(kinetic_expr, {**param_assigns, x_hat: val}, num_samples=num_samples, backend=args.backend)
-                                       for val in np.arange(args.nadir, args.apex, 0.1)])
-
-            total_energy = m * g * args.apex
-            return total_energy - max_kinetic_elastic
-        return displacement_is_bounded
+            velocity_proxy = evaluate(expr, {**param_assigns}, num_samples=num_samples, backend=args.backend)
+            return velocity_proxy
+        return displacement_is_constrained
 
     ### loss function plotting
     # def compute_samples (sval, tval):
@@ -283,7 +270,7 @@ def optimize(args: Args):
 
     cons = [
         {'type': 'ineq', 'fun': generate_max_acceleration_is_bounded()},
-        {'type': 'ineq', 'fun': generate_displacement_is_bounded()},
+        {'type': 'eq', 'fun': generate_displacement_is_constrained()},
     ]
 
     options = {'maxiter': args.maxiter, 'verbose': 2}
