@@ -40,9 +40,9 @@ apex = args.apex
 def s(x):
     x1 = s1 * x / (s1 + s2)
     x2 = s2 * x / (s1 + s2)
-    neither_lock = s1 * x1 + s2 * x2 * UnitStep(t1 - x1) * UnitStep(t2 - x2)
-    spring1_lock = s1 * (x - t1) + s2 * t1 * UnitStep(t1 - x1) * UnitStep(x2 - t2)
-    spring2_lock = s2 * (x - t2) + s1 * t2 * UnitStep(x1 - t1) * UnitStep(t2 - x2)
+    neither_lock = (s1 * x1 + s2 * x2) * UnitStep(t1 - x1) * UnitStep(t2 - x2)
+    spring1_lock = (s1 * t1 + s2 * (x - t1)) * UnitStep(t1 - x1) * UnitStep(x2 - t2)
+    spring2_lock = (s2 * t2 + s1 * (x - t2)) * UnitStep(x1 - t1) * UnitStep(t2 - x2)
     both_lock = gravity * UnitStep(x1 - t1) * UnitStep(x2 - t2)
     return neither_lock + spring1_lock + spring2_lock + both_lock
 
