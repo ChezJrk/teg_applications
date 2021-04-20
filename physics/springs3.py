@@ -290,7 +290,7 @@ def optimize(args: Args):
     print('Starting minimization')
 
     init_guess = [var.value for var in (args.scales + args.thresholds)]
-    res = minimize(loss, init_guess, jac=jac, hess=hess, method='trust-constr', constraints=cons, options=options)
+    res = minimize(loss, init_guess, jac=jac, hess=hess, method='trust-constr', constraints=cons, bounds=((0, 10), (0, 10), (0, 10), (0, 10)), options=options)
 
     # res = minimize(loss_and_grads, [var.value for var in (args.scales + args.thresholds)], constraints=cons, tol=args.tol, jac=True, options=options, bounds=((0, 10), (0, 10), (0, 10), (0, 10)))
     print('The final parameter values are', res.x)
