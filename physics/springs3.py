@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-from tqdm import trange
 from scipy.optimize import minimize
 import numpy as np
 from typing import List
@@ -30,21 +29,22 @@ from tap import Tap
 
 
 class Args(Tap):
-    s1: float = 0.9
-    s2: float = 7.0
-    t1: float = 16.0
+    s1: float = 0.5
+    s2: float = 9.2
+    t1: float = 8.6
     t2: float = 1000
 
     nadir: float = 1e-5
-    apex: float = 15.0
+    apex: float = 12.5
 
     mass: float = 1
     gravity: float = 10
-    gforce_bound: float = 2.0
+    gforce_bound: float = 3.5
 
     num_samples: int = 200
     maxiter: int = 1000
     tol: int = 1e-8
+    second_order: bool = False
 
     ignore_deltas: bool = False
     backend: str = 'C'
@@ -131,7 +131,7 @@ def optimize(args: Args):
     ignore_deltas = 'no_delta_' if args.ignore_deltas else ''
     deriv_path = os.path.join(args.deriv_cache, f'{ignore_deltas}deriv.pkl')
     second_deriv_path = os.path.join(args.deriv_cache, f'{ignore_deltas}second_deriv.pkl')
-    if not os.path.isfile(second_deriv_path):
+    if not os.path.isfile(second_deriv_path if args.second_order else deriv_path):
         print('Computing the first derivative')
         out_list = [*args.scales, *args.thresholds]
         if args.ignore_deltas:
@@ -141,32 +141,31 @@ def optimize(args: Args):
         deriv = simplify(reduce_to_base(silly_deriv))
         deriv = Teg(nadir, apex, substitute(deriv, Const(70, 'x_hat'), x_hat), x_hat)
 
-        print('Computing the second derivative')
-
-        second_deriv = []
-        for i, eltwise_deriv in enumerate(silly_deriv):
-            print(f'Iteration {i}: second derivative.')
-
-            eltwise_deriv = simplify(reduce_to_base(eltwise_deriv))
-            print('Computing reverse derivative')
-            if args.ignore_deltas:
-                sndd = reverse_deriv(eltwise_deriv, output_list=out_list, args={'ignore_deltas': True})[1]
-            else:
-                sndd = reverse_deriv(eltwise_deriv, output_list=out_list)[1]
-            print('Reducing to base')
-            reduced_sndd = reduce_to_base(sndd, timing=True)
-            print('Simplifying')
-            res = simplify(reduced_sndd)
-            second_deriv_i = substitute(res, Const(70, 'x_hat'), x_hat)
-            second_deriv_i = Teg(nadir, apex, second_deriv_i, x_hat)
-            second_deriv.append(second_deriv_i)
-
         pickle.dump(deriv, open(deriv_path, "wb"))
-        pickle.dump(second_deriv, open(second_deriv_path, "wb"))
+
+        if args.second_order:
+            print('Computing the second derivative')
+
+            second_deriv = []
+            for i, eltwise_deriv in enumerate(silly_deriv):
+                print(f'Iteration {i}: second derivative.')
+
+                eltwise_deriv = simplify(reduce_to_base(eltwise_deriv))
+                print('Computing reverse derivative')
+                sndd = reverse_deriv(eltwise_deriv, output_list=out_list)[1]
+                print('Reducing to base')
+                reduced_sndd = reduce_to_base(sndd, timing=True)
+                print('Simplifying')
+                res = simplify(reduced_sndd)
+                second_deriv_i = substitute(res, Const(70, 'x_hat'), x_hat)
+                second_deriv_i = Teg(nadir, apex, second_deriv_i, x_hat)
+                second_deriv.append(second_deriv_i)
+
+            pickle.dump(second_deriv, open(second_deriv_path, "wb"))
 
     else:
         deriv = pickle.load(open(deriv_path, "rb"))
-        second_deriv = pickle.load(open(second_deriv_path, "rb"))
+        second_deriv = pickle.load(open(second_deriv_path, "rb")) if args.second_order else []
 
     def loss(values):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
@@ -303,7 +302,11 @@ def optimize(args: Args):
     print(f'init loss    : {loss(init_guess)}')
     print(f'init disp_f  : {disp_f(init_guess)}')
     print(f'init acc_f   : {acc_f(init_guess)}')
-    res = minimize(loss, init_guess, jac=jac, hess=hess, method='trust-constr', constraints=cons, bounds=((0, 1000), (0, 1000), (0, 1000), (0, 1000)), options=options)
+    opt_bounds = ((0, 1000), (0, 1000), (0, 1000), (0, 1000))
+    if args.second_order:
+        res = minimize(loss, init_guess, jac=jac, hess=hess, method='trust-constr', constraints=cons, bounds=opt_bounds, options=options)
+    else:
+        res = minimize(loss, init_guess, jac=jac, method='trust-constr', constraints=cons, bounds=opt_bounds, options=options)
 
     # res = minimize(loss_and_grads, [var.value for var in (args.scales + args.thresholds)], constraints=cons, tol=args.tol, jac=True, options=options, bounds=((0, 10), (0, 10), (0, 10), (0, 10)))
     print('The final parameter values are', res.x)
