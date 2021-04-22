@@ -30,19 +30,20 @@ from tap import Tap
 
 
 class Args(Tap):
-    s1: float = 3
-    s2: float = 3
-    t1: float = 3
-    t2: float = 3
+    s1: float = 0.9
+    s2: float = 7.0
+    t1: float = 16.0
+    t2: float = 1000
 
     nadir: float = 1e-5
-    apex: float = 5
+    apex: float = 15.0
 
     mass: float = 1
     gravity: float = 10
+    gforce_bound: float = 2.0
 
-    num_samples: int = 50
-    maxiter: int = 40
+    num_samples: int = 200
+    maxiter: int = 1000
     tol: int = 1e-8
 
     ignore_deltas: bool = False
@@ -170,47 +171,54 @@ def optimize(args: Args):
     def loss(values):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
         s1, s2, t1, t2 = values
-        print(f'--s1 {s1} --s2 {s2} --t1 {t1} --t2 {t2}')
+        # print(f'--s1 {s1} --s2 {s2} --t1 {t1} --t2 {t2}')
         loss = evaluate(loss_expr, param_assigns, num_samples=num_samples, backend=args.backend)
-        print(f'loss: {loss}')
+        # print(f'loss: {loss} | {loss if not np.isnan(loss) else 1000}')
 
         loss_values.append(loss)
         scale_values.append([scale.value for scale in args.scales])
         threshold_values.append([threshold.value for threshold in args.thresholds])
 
-        return loss
+        return loss if not np.isnan(loss) else 1000
 
     def jac(values):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
         grads = evaluate(deriv, param_assigns, num_samples=num_samples, backend=args.backend)
-        print(f'grad: {grads}')
+        # print(f'grad: {grads}')
         return grads
 
     def hess(values):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
         hesses = [evaluate(eltwise, param_assigns, num_samples=num_samples, backend=args.backend)
                   for eltwise in second_deriv]
-        print(f'hess: {hesses}')
+        # print(f'hess: {hesses}')
         return hesses
 
     def generate_max_acceleration_is_bounded():
-        # max(|acc|) < 2g
+        # max(|acc|) < cg
         # since acc < 0, -acc >= 0
-        # max(-acc) < 2g
-        # max(-(stress(disp) - g)) < 2g
-        # max(-stress(disp)) < g
-        # -max(-stress(disp)) + g > 0
-        # min(stress) + g > 0
-        x = Var('x')
-        expr_to_min = stress(x, args) + g
+        # max(-acc) < cg
+        # max(stress(disp) - g) < cg
+        # max(stress(disp)) < (c+1)g
+        # (c+1)g - max(stress(disp)) > 0
+        # (c+1)g - stress(apex) > 0
+        c = args.gforce_bound
+        out_list = [*args.scales, *args.thresholds]
+        deriv_args = {'ignore_deltas': True} if args.ignore_deltas else {}
+        expr = (c+1)*g - stress(args.apex, args)
+        expr_grad = reverse_deriv(expr, Tup(Const(1)), output_list=out_list, args=deriv_args)[1]
+        expr_grad = simplify(reduce_to_base(expr_grad))
 
         def max_acceleration_is_bounded(values):
             param_assigns = dict(zip(args.scales + args.thresholds, values))
-            min_stress = min([evaluate(expr_to_min, {**param_assigns, x: val}, num_samples=num_samples, backend=args.backend)
-                              for val in np.arange(args.nadir, args.apex, 0.1)])
+            min_stress = evaluate(expr, {**param_assigns}, num_samples=num_samples, backend=args.backend)
             return min_stress
+        def max_acceleration_is_bounded_gradient(values):
+            param_assigns = dict(zip(args.scales + args.thresholds, values))
+            grad = evaluate(expr_grad, {**param_assigns}, num_samples=num_samples, backend=args.backend)
+            return grad
 
-        return max_acceleration_is_bounded
+        return max_acceleration_is_bounded, max_acceleration_is_bounded_gradient
 
     def generate_displacement_is_constrained():
         # x'' = f(x), x(0) = 0, x'(0) = 0
@@ -224,12 +232,20 @@ def optimize(args: Args):
             half_velocity_squared = Teg(args.nadir, args.apex, inner_integrand, disp)
             return half_velocity_squared
 
+        out_list = [*args.scales, *args.thresholds]
+        deriv_args = {'ignore_deltas': True} if args.ignore_deltas else {}
         expr = half_vel_squared()
+        expr_grad = reverse_deriv(expr, Tup(Const(1)), output_list=out_list, args=deriv_args)[1]
+        expr_grad = simplify(reduce_to_base(expr_grad))
         def displacement_is_constrained(values):
             param_assigns = dict(zip(args.scales + args.thresholds, values))
             velocity_proxy = evaluate(expr, {**param_assigns}, num_samples=num_samples, backend=args.backend)
             return velocity_proxy
-        return displacement_is_constrained
+        def displacement_is_constrained_gradient(values):
+            param_assigns = dict(zip(args.scales + args.thresholds, values))
+            grad = evaluate(expr_grad, {**param_assigns}, num_samples=num_samples, backend=args.backend)
+            return grad
+        return displacement_is_constrained, displacement_is_constrained_gradient
 
     ### loss function plotting
     # def compute_samples (sval, tval):
@@ -273,23 +289,31 @@ def optimize(args: Args):
     # plt.show()
 
     ### plotting end
-
+    disp_f, disp_jac = generate_displacement_is_constrained()
+    acc_f, acc_jac = generate_max_acceleration_is_bounded()
     cons = [
-        {'type': 'ineq', 'fun': generate_max_acceleration_is_bounded()},
-        {'type': 'eq', 'fun': generate_displacement_is_constrained()},
+        {'type': 'eq', 'fun': disp_f, 'jac': disp_jac},
+        {'type': 'ineq', 'fun': acc_f, 'jac': acc_jac},
     ]
 
     options = {'maxiter': args.maxiter, 'verbose': 2}
     print('Starting minimization')
 
     init_guess = [var.value for var in (args.scales + args.thresholds)]
-    res = minimize(loss, init_guess, jac=jac, hess=hess, method='trust-constr', constraints=cons, bounds=((0, 10), (0, 10), (0, 10), (0, 10)), options=options)
+    print(f'init loss    : {loss(init_guess)}')
+    print(f'init disp_f  : {disp_f(init_guess)}')
+    print(f'init acc_f   : {acc_f(init_guess)}')
+    res = minimize(loss, init_guess, jac=jac, hess=hess, method='trust-constr', constraints=cons, bounds=((0, 1000), (0, 1000), (0, 1000), (0, 1000)), options=options)
 
     # res = minimize(loss_and_grads, [var.value for var in (args.scales + args.thresholds)], constraints=cons, tol=args.tol, jac=True, options=options, bounds=((0, 10), (0, 10), (0, 10), (0, 10)))
     print('The final parameter values are', res.x)
     print('Command line args')
     s1, s2, t1, t2 = res.x
     print(f'--s1 {s1} --s2 {s2} --t1 {t1} --t2 {t2}')
+    print(f'end loss     : {loss(res.x)}')
+    print(f'end disp_f   : {disp_f(res.x)}')
+    print(f'end acc_f    : {acc_f(res.x)}')
+    # print(res)
     print('Ending minimization')
     return loss_values, scale_values, threshold_values, res.x
 
