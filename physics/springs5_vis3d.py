@@ -201,12 +201,12 @@ ax2 = fig.add_subplot(132, projection='3d')
 ax3 = fig.add_subplot(133, projection='3d')
 
 
-num_k1s = 20
-num_k2s = 20
+num_k1s = 21
+num_k2s = 21
 k1s = np.linspace(0, 10, num_k1s)
 k2s = np.linspace(0, 10, num_k2s)
-K1s = np.array([k1s for _ in k2s])
-K2s = np.array([k2s for _ in k1s]).transpose()
+K1s = np.array([k1s for _ in k2s]).transpose()
+K2s = np.array([k2s for _ in k1s])
 
 
 def eval_loss_surface():
@@ -249,7 +249,7 @@ loss_vals, loss_param_solves = eval_loss_surface()
 loss_plot_kwargs = {'rstride': 1, 'cstride': 1, 'alpha': 0.5}
 loss_contour_kwargs = {'levels': [_ for _ in np.arange(0.5, 2, .1)], 'cmap': cm.get_cmap('magma'), 'linestyles': "solid"}
 loss_plot = ax1.plot_surface(K1s, K2s, loss_vals, **loss_plot_kwargs)
-ax1.contour(K1s, K2s, loss_vals, loss_vals, **loss_contour_kwargs)
+ax1.contour(K1s, K2s, loss_vals, **loss_contour_kwargs)
 ax1.set_xlabel('k1')
 ax1.set_ylabel('k2')
 ax1.set_zlabel('loss')
@@ -269,7 +269,7 @@ disp_vals = eval_disp_surface(loss_param_solves)
 disp_plot_kwargs = {'rstride': 1, 'cstride': 1, 'alpha': 0.5}
 disp_contour_kwargs = {'levels': [_ for _ in np.arange(0, 15, 5)], 'cmap': cm.get_cmap('magma'), 'linestyles': "solid"}
 disp_plot = ax2.plot_surface(K1s, K2s, disp_vals, **disp_plot_kwargs)
-ax2.contour(K1s, K2s, disp_vals, disp_vals, **disp_contour_kwargs)
+ax2.contour(K1s, K2s, disp_vals, **disp_contour_kwargs)
 ax2.set_xlabel('k1')
 ax2.set_ylabel('k2')
 ax2.set_zlabel('disp')
@@ -289,7 +289,7 @@ acc_vals = eval_acc_surface(loss_param_solves)
 acc_plot_kwargs = {'rstride': 1, 'cstride': 1, 'alpha': 0.5}
 acc_contour_kwargs = {'levels': [_ for _ in np.arange(-40, 20, 10)], 'cmap': cm.get_cmap('magma'), 'linestyles': "solid"}
 acc_plot = ax3.plot_surface(K1s, K2s, acc_vals, **acc_plot_kwargs)
-ax3.contour(K1s, K2s, acc_vals, acc_vals, **acc_contour_kwargs)
+ax3.contour(K1s, K2s, acc_vals, **acc_contour_kwargs)
 ax3.set_xlabel('k1')
 ax3.set_ylabel('k2')
 ax3.set_zlabel('apex acc')
