@@ -6,6 +6,7 @@ from teg import (
 )
 
 import numpy as np
+from teg.ir.passes.c_math import SimpleCMath
 
 
 class InvertSqrt(SmoothFunc):
@@ -51,3 +52,22 @@ class IsNotNan(SmoothFunc):
 
     def output_size(input_size):
         return input_size
+
+
+class Exp(SmoothFunc):
+    """exp(x)"""
+    def __init__(self, expr: ITeg, name: str = "Exp"):
+        super(Exp, self).__init__(expr=expr, name=name)
+
+    def fwd_deriv(self, in_deriv_expr: ITeg):
+        return Exp(self.expr) * in_deriv_expr
+
+    def rev_deriv(self, out_deriv_expr: ITeg):
+        return out_deriv_expr * Exp(self.expr)
+
+    def operation(self, in_value):
+        return np.exp(in_value)
+
+    def to_c(input_symbol, output_symbol, **kwargs):
+        return SimpleCMath.simple_c(input_symbol, output_symbol, lambda x: f'exp({x})', **kwargs)
+
