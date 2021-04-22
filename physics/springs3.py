@@ -29,10 +29,10 @@ from tap import Tap
 
 
 class Args(Tap):
-    s1: float = 0.5
-    s2: float = 9.2
-    t1: float = 8.6
-    t2: float = 1000
+    s1: float = 0.1
+    s2: float = 1
+    t1: float = 10
+    t2: float = 50
 
     nadir: float = 1e-5
     apex: float = 12.5
@@ -45,6 +45,7 @@ class Args(Tap):
     maxiter: int = 1000
     tol: int = 1e-8
     second_order: bool = False
+    no_derivs: bool = False
 
     ignore_deltas: bool = False
     backend: str = 'C'
@@ -183,14 +184,14 @@ def optimize(args: Args):
     def jac(values):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
         grads = evaluate(deriv, param_assigns, num_samples=num_samples, backend=args.backend)
-        # print(f'grad: {grads}')
+        print(f'grad: {grads}')
         return grads
 
     def hess(values):
         param_assigns = dict(zip(args.scales + args.thresholds, values))
         hesses = [evaluate(eltwise, param_assigns, num_samples=num_samples, backend=args.backend)
                   for eltwise in second_deriv]
-        # print(f'hess: {hesses}')
+        print(f'hess: {hesses}')
         return hesses
 
     def generate_max_acceleration_is_bounded():
@@ -303,7 +304,9 @@ def optimize(args: Args):
     print(f'init disp_f  : {disp_f(init_guess)}')
     print(f'init acc_f   : {acc_f(init_guess)}')
     opt_bounds = ((0, 1000), (0, 1000), (0, 1000), (0, 1000))
-    if args.second_order:
+    if args.no_derivs:
+        res = minimize(loss, init_guess, method='trust-constr', constraints=cons, bounds=opt_bounds, options=options)
+    elif args.second_order:
         res = minimize(loss, init_guess, jac=jac, hess=hess, method='trust-constr', constraints=cons, bounds=opt_bounds, options=options)
     else:
         res = minimize(loss, init_guess, jac=jac, method='trust-constr', constraints=cons, bounds=opt_bounds, options=options)
