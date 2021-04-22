@@ -1,5 +1,6 @@
 from __future__ import annotations
 import numpy as np
+from scipy.optimize import minimize
 from scipy.interpolate import UnivariateSpline
 from scipy.integrate import odeint
 from scipy import integrate
@@ -45,6 +46,8 @@ class Args(Tap):
 
     num_samples: int = 50
     backend: str = 'C'
+
+    do_t1_solve: bool = True
 
 
 args = Args().parse_args()
@@ -160,6 +163,7 @@ def teg_disp():
 
 
 teg_disp_constraint_expr = teg_disp()
+teg_disp_constraint_grad_expr = simplify(FwdDeriv(teg_disp_constraint_expr, [(teg_params.t1, 1)]).deriv_expr)
 
 
 def teg_disp_constraint(ps):
@@ -167,52 +171,128 @@ def teg_disp_constraint(ps):
     loss = evaluate(teg_disp_constraint_expr, param_assigns, num_samples=num_samples, backend=args.backend)
     return loss
 
+def teg_disp_constraint_grad(ps):
+    param_assigns = dict(zip(teg_params.to_list(), ps.to_list()))
+    loss = evaluate(teg_disp_constraint_grad_expr, param_assigns, num_samples=num_samples, backend=args.backend)
+    return loss
+
+
+def teg_acc():
+    apex_acc = gravity - teg_stress(teg_params, args.apex)
+    return apex_acc
+
+
+teg_acc_constraint_expr = teg_acc()
+
+
+def teg_acc_constraint(ps):
+    param_assigns = dict(zip(teg_params.to_list(), ps.to_list()))
+    loss = evaluate(teg_acc_constraint_expr, param_assigns, num_samples=num_samples, backend=args.backend)
+    return loss
 
 ###
 
 
 # Plotting
-fig = plt.figure(figsize=(10, 6))
+fig = plt.figure(figsize=(12, 6))
 plt.subplots_adjust(bottom=0.25)
-ax1 = fig.add_subplot(111, projection='3d')
-# ax1 = fig.add_subplot(121, projection='3d')
-
-# xs = np.linspace(0, 10, 1000)
-# y = np.array(list(map(partial(stress_func, params), xs)))
-# spline = UnivariateSpline(xs, y, s=6)
-# x_spline = np.linspace(0, 10, 1000)
-# y_spline = np.array(list(map(partial(stress_func, params), x_spline)))
-# stress_strain_plot_init, = ax1.plot(xs, y)
-# stress_strain_plot, = ax1.plot(x_spline, y_spline, 'g')
+ax1 = fig.add_subplot(131, projection='3d')
+ax2 = fig.add_subplot(132, projection='3d')
+ax3 = fig.add_subplot(133, projection='3d')
 
 
 num_k1s = 20
 num_k2s = 20
 k1s = np.linspace(0, 10, num_k1s)
 k2s = np.linspace(0, 10, num_k2s)
+K1s = np.array([k1s for _ in k2s])
+K2s = np.array([k2s for _ in k1s]).transpose()
 
 
 def eval_loss_surface():
+    def solve_for_t1(k1, k2, t2):
+        def t1_f(x):
+            ps = Params([k1, k2], [x, t2])
+            return teg_disp_constraint(ps)
+
+        def t1_df(x):
+            ps = Params([k1, k2], [x, t2])
+            return teg_disp_constraint_grad(ps)
+
+        def t1_loss(x):
+            t1_val, = x
+            return np.power(t1_f(t1_val) - args.apex, 2)
+
+        def t1_jac(x):
+            t1_val, = x
+            return 2 * (t1_f(t1_val) - args.apex) * t1_df(t1_val)
+        init_guess = np.array([2])
+        # ret = minimize(t1_loss, init_guess, method='trust-constr', jac=t1_jac, bounds=[(0, 10)], options={'verbose': 0})
+        ret = minimize(t1_loss, init_guess, jac=t1_jac)
+        t1_val = np.clip(ret.x[0], 0, 10)
+        # t1_val, = ret.x
+        return t1_val
 
     vals = np.zeros((num_k1s, num_k2s))
+    param_solves = [[None for _ in range(num_k2s)] for _ in range(num_k1s)]
     for i, k1 in enumerate(k1s):
         for j, k2 in enumerate(k2s):
-            ps = Params([k1, k2], [params.t1, params.t2])
+            t1 = solve_for_t1(k1, k2, params.t2) if args.do_t1_solve else params.t1
+            ps = Params([k1, k2], [t1, params.t2])
             val = teg_loss(ps)
             vals[i, j] = val
-    return vals
+            param_solves[i][j] = ps
+    return vals, param_solves
 
 
-loss_vals = eval_loss_surface()
+loss_vals, loss_param_solves = eval_loss_surface()
 loss_plot_kwargs = {'rstride': 1, 'cstride': 1, 'alpha': 0.5}
 loss_contour_kwargs = {'levels': [_ for _ in np.arange(0.5, 2, .1)], 'cmap': cm.get_cmap('magma'), 'linestyles': "solid"}
-loss_plot = ax1.plot_surface(np.array([k1s for _ in k2s]), np.array([k2s for _ in k1s]).transpose(), loss_vals, **loss_plot_kwargs)
-ax1.contour(np.array([k1s for _ in k2s]), np.array([k2s for _ in k1s]).transpose(), loss_vals, loss_vals, **loss_contour_kwargs)
+loss_plot = ax1.plot_surface(K1s, K2s, loss_vals, **loss_plot_kwargs)
+ax1.contour(K1s, K2s, loss_vals, loss_vals, **loss_contour_kwargs)
 ax1.set_xlabel('k1')
 ax1.set_ylabel('k2')
 ax1.set_zlabel('loss')
 
 
+def eval_disp_surface(param_solves):
+    vals = np.zeros((num_k1s, num_k2s))
+    for i, k1 in enumerate(k1s):
+        for j, k2 in enumerate(k2s):
+            ps = param_solves[i][j]
+            val = teg_disp_constraint(ps)
+            vals[i, j] = val
+    return vals
+
+
+disp_vals = eval_disp_surface(loss_param_solves)
+disp_plot_kwargs = {'rstride': 1, 'cstride': 1, 'alpha': 0.5}
+disp_contour_kwargs = {'levels': [_ for _ in np.arange(0, 15, 5)], 'cmap': cm.get_cmap('magma'), 'linestyles': "solid"}
+disp_plot = ax2.plot_surface(K1s, K2s, disp_vals, **disp_plot_kwargs)
+ax2.contour(K1s, K2s, disp_vals, disp_vals, **disp_contour_kwargs)
+ax2.set_xlabel('k1')
+ax2.set_ylabel('k2')
+ax2.set_zlabel('disp')
+
+
+def eval_acc_surface(param_solves):
+    vals = np.zeros((num_k1s, num_k2s))
+    for i, k1 in enumerate(k1s):
+        for j, k2 in enumerate(k2s):
+            ps = param_solves[i][j]
+            val = teg_acc_constraint(ps)
+            vals[i, j] = val
+    return vals
+
+
+acc_vals = eval_acc_surface(loss_param_solves)
+acc_plot_kwargs = {'rstride': 1, 'cstride': 1, 'alpha': 0.5}
+acc_contour_kwargs = {'levels': [_ for _ in np.arange(-40, 20, 10)], 'cmap': cm.get_cmap('magma'), 'linestyles': "solid"}
+acc_plot = ax3.plot_surface(K1s, K2s, acc_vals, **acc_plot_kwargs)
+ax3.contour(K1s, K2s, acc_vals, acc_vals, **acc_contour_kwargs)
+ax3.set_xlabel('k1')
+ax3.set_ylabel('k2')
+ax3.set_zlabel('apex acc')
 
 
 
@@ -244,12 +324,22 @@ def new_param_update(ps):
     params.update(ps)
     ax1.clear()
     new_loss_vals = eval_loss_surface()
-    ax1.plot_surface(np.array([k1s for _ in k2s]), np.array([k2s for _ in k1s]).transpose(), new_loss_vals, **loss_plot_kwargs)
-    ax1.contour(np.array([k1s for _ in k2s]), np.array([k2s for _ in k1s]).transpose(), loss_vals, loss_vals, **loss_contour_kwargs)
+    ax1.plot_surface(K1s, K2s, new_loss_vals, **loss_plot_kwargs)
+    ax1.contour(K1s, K2s, loss_vals, loss_vals, **loss_contour_kwargs)
+
+    ax2.plot_surface(K1s, K2s, disp_vals, **disp_plot_kwargs)
+    ax2.contour(K1s, K2s, disp_vals, disp_vals, **disp_contour_kwargs)
+
+    acc_plot = ax3.plot_surface(K1s, K2s, acc_vals, **acc_plot_kwargs)
+    ax3.contour(K1s, K2s, acc_vals, acc_vals, **acc_contour_kwargs)
 
     # redrawing the figure
     ax1.relim()
     ax1.autoscale_view(True, True, True)
+    ax2.relim()
+    ax2.autoscale_view(True, True, True)
+    ax3.relim()
+    ax3.autoscale_view(True, True, True)
     fig.canvas.draw()
 
 
