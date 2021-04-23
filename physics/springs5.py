@@ -43,8 +43,7 @@ class Args(Tap):
 
     ignore_deltas: bool = False
     backend: str = 'C'
-    deriv_cache: str = '/Users/undefined/Documents/GitHub/teg_applications/physics/springs_cached_derivs'
-    # deriv_cache: str = './physics/springs_cached_derivs'
+    deriv_cache: str = './physics/springs_cached_derivs'
 
     def process_args(self):
         self.thresholds = [Var('threshold1', self.t1), Var('threshold2', self.t2)]
@@ -115,11 +114,7 @@ def optimize(args: Args):
         ignore_deltas = 'no_delta_' if args.ignore_deltas else ''
         deriv_path = os.path.join(args.deriv_cache, f'{ignore_deltas}deriv.pkl')
         second_deriv_path = os.path.join(args.deriv_cache, f'{ignore_deltas}second_deriv.pkl')
-        # if not os.path.isfile(second_deriv_path if args.second_order else deriv_path):
-        if True:
-            import sys
-            sys.setrecursionlimit(10000)
-
+        if not os.path.isfile(second_deriv_path if args.second_order else deriv_path):
             print('Computing the first derivative')
             deriv_args = {'ignore_deltas': True} if args.ignore_deltas else {}
 
