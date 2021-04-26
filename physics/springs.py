@@ -23,10 +23,10 @@ from tap import Tap
 
 
 class Args(Tap):
-    s1: float = 1
-    s2: float = 10
-    t1: float = 2
-    t2: float = 10
+    k1: float = 1
+    k2: float = 10
+    l1: float = 2
+    l2: float = 10
 
     nadir: float = 1e-5
     apex: float = 5.0
@@ -38,16 +38,15 @@ class Args(Tap):
     num_samples: int = 200
     maxiter: int = 1000
     tol: int = 1e-8
-    second_order: bool = False
-    no_derivs: bool = False
 
+    finite_diff: bool = False
     ignore_deltas: bool = False
+
     backend: str = 'C'
-    deriv_cache: str = './physics/springs_cached_derivs'
 
     def process_args(self):
-        self.thresholds = [Var('threshold1', self.t1), Var('threshold2', self.t2)]
-        self.scales = [Var('scale1', self.s1), Var('scale2', self.s2)]
+        self.thresholds = [Var('threshold1', self.l1), Var('threshold2', self.l2)]
+        self.scales = [Var('scale1', self.k1), Var('scale2', self.k2)]
 
 
 def stress(strain: ITeg, args: Args) -> ITeg:
@@ -111,40 +110,10 @@ def optimize(args: Args):
         out_list = [*args.scales, *args.thresholds]
         loss_expr = Sqr(acc() - 0.0) + t_from_pos()
 
-        ignore_deltas = 'no_delta_' if args.ignore_deltas else ''
-        deriv_path = os.path.join(args.deriv_cache, f'{ignore_deltas}deriv.pkl')
-        second_deriv_path = os.path.join(args.deriv_cache, f'{ignore_deltas}second_deriv.pkl')
-        if not os.path.isfile(second_deriv_path if args.second_order else deriv_path):
-            print('Computing the first derivative')
-            deriv_args = {'ignore_deltas': True} if args.ignore_deltas else {}
+        deriv_args = {'ignore_deltas': True} if args.ignore_deltas else {}
 
-            loss_jac_list = reverse_deriv(loss_expr, Tup(Const(1)), output_list=out_list, args=deriv_args)[1]
-            loss_jac_expr = simplify(reduce_to_base(loss_jac_list))
-
-            pickle.dump(loss_jac_expr, open(deriv_path, "wb"))
-
-            loss_hess_expr_list = []
-            if args.second_order:
-                print('Computing the second derivative')
-
-                for i, eltwise_deriv in enumerate(loss_jac_list):
-                    print(f'Iteration {i}: second derivative.')
-
-                    eltwise_deriv = simplify(reduce_to_base(eltwise_deriv))
-                    print('Computing reverse derivative')
-                    sndd = reverse_deriv(eltwise_deriv, output_list=out_list)[1]
-                    print('Reducing to base')
-                    reduced_sndd = reduce_to_base(sndd, timing=True)
-                    print('Simplifying')
-                    res = simplify(reduced_sndd)
-                    second_deriv_i = res
-                    loss_hess_expr_list.append(second_deriv_i)
-
-                pickle.dump(loss_hess_expr_list, open(second_deriv_path, "wb"))
-
-        else:
-            loss_jac_expr = pickle.load(open(deriv_path, "rb"))
-            loss_hess_expr_list = pickle.load(open(second_deriv_path, "rb")) if args.second_order else []
+        loss_jac_list = reverse_deriv(loss_expr, Tup(Const(1)), output_list=out_list, args=deriv_args)[1]
+        loss_jac_expr = simplify(reduce_to_base(loss_jac_list))
 
         def loss_f(values):
             param_assigns = dict(zip(args.scales + args.thresholds, values))
@@ -156,12 +125,7 @@ def optimize(args: Args):
             grad = evaluate(loss_jac_expr, param_assigns, num_samples=num_samples, backend=args.backend)
             return grad
 
-        def loss_hess(values):
-            param_assigns = dict(zip(args.scales + args.thresholds, values))
-            hess = [evaluate(eltwise, param_assigns, num_samples=num_samples, backend=args.backend)
-                  for eltwise in loss_hess_expr_list]
-            return hess
-        return loss_f, loss_jac, loss_hess
+        return loss_f, loss_jac
 
     def generate_displacement_is_constrained():
         # x'' = f(x), x(0) = 0, x'(0) = 0
@@ -192,49 +156,50 @@ def optimize(args: Args):
             return grad
         return displacement_is_constrained, displacement_is_constrained_gradient
 
-    loss_f, loss_jac, loss_hess = generate_loss()
+    loss_f, loss_jac = generate_loss()
     disp_f, disp_jac = generate_displacement_is_constrained()
     cons = [
-        {'type': 'eq', 'fun': disp_f} if args.no_derivs else {'type': 'eq', 'fun': disp_f, 'jac': disp_jac},
+        {'type': 'eq', 'fun': disp_f} if args.finite_diff else {'type': 'eq', 'fun': disp_f, 'jac': disp_jac},
     ]
 
     print('Starting minimization')
 
     options = {'maxiter': args.maxiter, 'verbose': 2}
-    init_guess = [var.value for var in (args.scales + args.thresholds)]
-    print(f'init loss    : {loss_f(init_guess)}')
-    opt_bounds = ((0, 1000), (0, 1000), (0, 1000), (0, 1000))
-    if args.no_derivs:
-        res = minimize(loss_f, init_guess, method='trust-constr', constraints=cons, bounds=opt_bounds, options=options)
-    elif args.second_order:
-        res = minimize(loss_f, init_guess, jac=loss_jac, hess=loss_hess, method='trust-constr', constraints=cons, bounds=opt_bounds, options=options)
+    init = [var.value for var in (args.scales + args.thresholds)]
+    print(f'init loss    : {loss_f(init)}')
+    method = 'trust-constr'
+    bounds = ((0, 1000), (0, 1000), (0, 1000), (0, 1000))
+    if args.finite_diff:
+        res = minimize(loss_f, init, method=method, constraints=cons, bounds=bounds, options=options)
     else:
-        res = minimize(loss_f, init_guess, jac=loss_jac, method='trust-constr', constraints=cons, bounds=opt_bounds, options=options)
+        res = minimize(loss_f, init, jac=loss_jac, method=method, constraints=cons, bounds=bounds, options=options)
 
     print('The final parameter values are', res.x)
     print('Command line args')
-    s1, s2, t1, t2 = res.x
-    print(f'--s1 {s1} --s2 {s2} --t1 {t1} --t2 {t2}')
+    k1, k2, l1, l2 = res.x
+    print(f'--k1 {k1} --k2 {k2} --l1 {l1} --l2 {l2}')
     print(f'end loss     : {loss_f(res.x)}')
-    # print(res)
     print('Ending minimization')
     return res.x
 
 
 def main():
     args = Args().parse_args()
-    scales_init, thresholds_init = [scale.value for scale in args.scales], [threshold.value for threshold in args.thresholds]
+    scales_init = [scale.value for scale in args.scales]
+    thresholds_init = [threshold.value for threshold in args.thresholds]
     final_param_vals = optimize(args)
+    num_samples = args.num_samples
+    backend = args.backend
 
     strains = np.arange(0, args.apex+1, step=0.01)
     param_assigns = dict(zip(args.scales + args.thresholds, scales_init + thresholds_init))
 
     strain = Var('strain')
     stress_expr = stress(strain, args)
-    stresses_before = [evaluate(stress_expr, {**param_assigns, strain: val}, num_samples=args.num_samples, backend=args.backend)
+    stresses_before = [evaluate(stress_expr, {**param_assigns, strain: val}, num_samples=num_samples, backend=backend)
                        for val in strains]
     param_assigns = dict(zip(args.scales + args.thresholds, final_param_vals))
-    stresses_after = [evaluate(stress_expr, {**param_assigns, strain: val}, num_samples=args.num_samples, backend=args.backend)
+    stresses_after = [evaluate(stress_expr, {**param_assigns, strain: val}, num_samples=num_samples, backend=backend)
                       for val in strains]
 
     plt.plot(strains, stresses_before, label='Before')
