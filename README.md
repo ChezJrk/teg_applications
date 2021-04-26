@@ -1,12 +1,11 @@
 # Teg Applications
-We implement applications of Teg spanning areas of graphics.
+This is a research artifact for the paper: **Systematically Optimizing Parametric Discontinuities**. This repository contains the implementation for the applications of our differentiable programming language Teg. The applications include image stylization, fitting shader parameters, trajectory optimization, and optimizing physical designs. The implementation for Teg can be found at [https://github.com/ChezJrk/Teg](https://github.com/ChezJrk/Teg).
 
 ## Setup
 To install the necessary Python packages run:
 ```
 pip install -r requirements.txt
 ```
-
 
 ## Optimizing Physical Design
 We study optimization of discontinuous parameters that control a physical design.
