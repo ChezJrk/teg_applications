@@ -38,7 +38,7 @@ Our implementation generates a device kernel for the energy of a single triangle
 
 Compile the device code using (requires a CUDA toolkit installation): 
 ```
-mkdir build && cd build
+mkdir graphics/triangulation/build && cd graphics/triangulation/build
 cmake ..
 make
 ```
