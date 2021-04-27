@@ -31,3 +31,59 @@ python3 physics/springs.py --finite_diff
 ```
 
 Running each of these should take more than a few minutes.
+
+## Image triangulation
+This application approximates images with a colored triangle mesh, by formulating and minimizing an energy function over possible triangulations.
+Our implementation generates a device kernel for the energy of a single triangle-pixel pair and its derivative using the Teg differentiable programming language. We then call this function from a CUDA kernel for maximum performance.
+
+Compile the device code using (requires a CUDA toolkit installation): 
+```
+mkdir build && cd build
+cmake ..
+make
+```
+(The build process also applies the necessary code transformations and compiles Teg functions, and therefore can take some time to complete.)
+
+To run the triangulation applications, use the following commands:
+
+(Constant color fragments)
+```
+./triangulate_const <image_file> <tri-grid nx> <tri-grid ny> <use_deltas: y/n>
+```
+
+(Linear color fragments)
+```
+./triangulate_linear <image_file> <tri-grid nx> <tri-grid ny> <use_deltas: y/n>
+```
+
+(Quadratic color fragments)
+```
+./triangulate_linear <image_file> <tri-grid nx> <tri-grid ny> <use_deltas: y/n>
+```
+
+## Thresholded Perlin shader optimization
+This application optimized the parameters of a thresholded Perlin shader to match a certain reference or guide image.
+We model such a thresholded shader by first generating Perlin noise (read more [https://adrianb.io/2014/08/09/perlinnoise.html](here))
+and then colorizing the region with negative and positive noise values with a specific color (C_+ and C_- in the paper).
+
+For simplicity, we first calculate the value of the noise function at the four corners of each pixel and use bilinear interpolation to calculate noise values at continuous points within each pixel.
+
+As is the case for triangulation, the shader program is compiled for a single pixel and paralleized through a CUDA kernel.
+
+Compile the device code using (requires a CUDA toolkit installation): 
+```
+mkdir graphics/perlin_noise/build && cd graphics/perlin_noise/build
+cmake ..
+make
+```
+
+To run the noise optimization (from the build folder) for the two-tone shader (two colors, one for positive and one for negative space)
+```
+./optimize_perlin <image> <grid-nx> <grid-ny> <seed> <learning-rate>
+```
+grid-nx and grid-ny must perfectly divide the width and height respectively. Use seed=0 and learning-rate=1e-3 for default values.
+
+For another version of the shader that added a per-pixel color map for added representative power, use
+```
+./optimize_perlin_colorized <image> <grid-nx> <grid-ny> <seed> <learning-rate>
+```
