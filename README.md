@@ -1,5 +1,5 @@
 # Teg Applications
-This is a research artifact for the paper: **Systematically Optimizing Parametric Discontinuities**. This repository contains the implementation for the applications of our differentiable programming language Teg. The applications include image stylization, fitting shader parameters, trajectory optimization, and optimizing physical designs. The implementation for Teg can be found at [https://github.com/ChezJrk/Teg](https://github.com/ChezJrk/Teg).
+This is a research artifact for the paper: **[Systematically Optimizing Parametric Discontinuities](https://people.csail.mit.edu/sbangaru/projects/teg-2021/)**. This repository contains the implementation for the applications of our differentiable programming language Teg. The applications include image stylization, fitting shader parameters, trajectory optimization, and optimizing physical designs. The implementation for Teg can be found at [https://github.com/ChezJrk/Teg](https://github.com/ChezJrk/Teg).
 
 ## Setup
 To install the necessary Python packages run:
@@ -86,4 +86,18 @@ grid-nx and grid-ny must perfectly divide the width and height respectively. Use
 For another version of the shader that added a per-pixel color map for added representative power, use
 ```
 ./optimize_perlin_colorized <image> <grid-nx> <grid-ny> <seed> <learning-rate>
+```
+
+## Citation
+```
+@article{BangaruMichel2021DiscontinuousAutodiff,
+  title = {Systematically Differentiating Parametric Discontinuities},
+  author = {Bangaru, Sai and Michel, Jesse and Mu, Kevin and Bernstein, Gilbert and Li, Tzu-Mao and Ragan-Kelley, Jonathan},
+  journal = {ACM Trans. Graph.},
+  volume = {40},
+  number = {107}, 
+  pages = {107:1-107:17},
+  year = {2021},
+  publisher = {ACM},
+}
 ```
