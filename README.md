@@ -58,7 +58,7 @@ To run the triangulation applications, use the following commands:
 
 (Quadratic color fragments)
 ```
-./triangulate_linear <image_file> <tri-grid nx> <tri-grid ny> <use_deltas: y/n>
+./triangulate_quadratic <image_file> <tri-grid nx> <tri-grid ny> <use_deltas: y/n>
 ```
 
 ## Thresholded Perlin shader optimization
